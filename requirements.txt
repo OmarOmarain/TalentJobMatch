@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-dotenv
+langchain
+langchain-community
+langchain-experimental
+langchain-openai
+langchain-huggingface
+langchain-chroma
+chromadb
+pypdf
+sentence-transformers
+rank_bm25
+pydantic
