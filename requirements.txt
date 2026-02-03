@@ -7,6 +7,8 @@ langchain-experimental
 langchain-openai
 langchain-huggingface
 langchain-chroma
+langsmith
+langchain-google-genai
 chromadb
 pypdf
 sentence-transformers
