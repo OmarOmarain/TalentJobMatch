@@ -82,4 +82,38 @@ To verify the system end-to-end:
 
 ```bash
 python test_flow.py
+
+## 📊 LangSmith Integration
+
+This application includes LangSmith monitoring for tracking and debugging LLM applications. LangSmith provides:
+
+- Tracing of LLM calls and chain executions
+- Performance metrics and latency tracking
+- Debugging capabilities for your AI workflows
+- Collaboration features for team development
+
+### Setup LangSmith
+
+1. Sign up for a free account at [LangSmith](https://smith.langchain.com/)
+2. Obtain your API key from the settings page
+3. Update your `.env` file with LangSmith configuration:
+   ```env
+   LANGCHAIN_TRACING_V2=true
+   LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
+   LANGCHAIN_API_KEY=your_langsmith_api_key_here
+   LANGCHAIN_PROJECT=your_project_name_here
+   ```
+
+### Local LangSmith Server
+
+For local development, you can also run LangSmith locally:
+
+1. Install the langchain-server: `pip install -U langsmith`
+2. Start the local server: `langchain-server start`
+3. Update your `.env` to use the local endpoint:
+   ```env
+   LANGCHAIN_ENDPOINT=http://localhost:1984
+   ```
+
+With LangSmith enabled, all LLM interactions and chain executions will be logged and available for inspection at your configured endpoint.
 ```
