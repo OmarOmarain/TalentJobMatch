@@ -10,6 +10,7 @@ class JobDescription(BaseModel):
         pattern="^(junior|mid|senior|lead)$",
         description="Experience level: junior, mid, senior, lead"
     )
+    
     department: Optional[str] = Field(
         default=None,
         max_length=100,
