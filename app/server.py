@@ -1,7 +1,5 @@
 import os
 from dotenv import load_dotenv
-import langsmith
-
 # Load environment variables before importing other modules
 load_dotenv()
 
