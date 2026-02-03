@@ -6,7 +6,7 @@ import langsmith
 load_dotenv()
 
 # Initialize LangSmith tracing
-langsmith.init()
+# langsmith.init()
 
 from fastapi import FastAPI, HTTPException
 from app.models import JobDescription, MatchResponse, MatchResult
