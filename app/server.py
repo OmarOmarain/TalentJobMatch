@@ -1,12 +1,7 @@
 import os
 from dotenv import load_dotenv
-import langsmith
-
 # Load environment variables before importing other modules
 load_dotenv()
-
-# Initialize LangSmith tracing
-langsmith.init()
 
 from fastapi import FastAPI, HTTPException
 from app.models import JobDescription, MatchResponse, MatchResult

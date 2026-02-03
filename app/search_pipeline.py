@@ -1,5 +1,5 @@
 from typing import List
-from app.vector_store import vectorstore
+from app.vector_store import get_vectorstore
 from app.bm25_index import BM25Index
 from app.query_expansion import generate_multi_queries
 
@@ -12,6 +12,7 @@ class SearchPipeline:
     def _build_bm25(self):
         # Fetch all documents from Chroma (this is just a placeholder logic)
         # In production, use a more efficient way or a persistent keyword store
+        vectorstore = get_vectorstore()
         all_docs = vectorstore.get()
         if all_docs and all_docs['documents']:
             self.bm25_index = BM25Index(all_docs['documents'])
@@ -30,6 +31,7 @@ class SearchPipeline:
         
         # 2. Vector Search (using the original JD and expanded queries)
         # Simple approach: Search with original JD
+        vectorstore = get_vectorstore()
         results = vectorstore.similarity_search_with_score(job_description, k=k*2)
         
         # Convert to standardized format
