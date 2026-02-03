@@ -30,6 +30,41 @@ TalentJobMatch/
 - Python 3.9+
 - OpenAI API Key
 
+## Quick Start for Team Members
+
+1.  **Clone the Repository**
+
+    ```bash
+    git clone https://github.com/OmarOmarain/TalentJobMatch.git
+    cd TalentJobMatch
+    ```
+
+2.  **Install Dependencies**
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+3.  **Setup Environment**
+    - Copy `.env.example` to `.env`
+    - Add your **Google Gemini API Key** (`GOOGLE_API_KEY`)
+
+4.  **Ingest Data (Important!)**
+    - The vector database is _local_ to your machine and is ignored by Git.
+    - Add candidate PDF CVs to the `data/` folder.
+    - Run the ingestion script:
+      ```bash
+      python -m app.ingest
+      ```
+    - This will create a `chroma_db/` folder on your machine.
+
+5.  **Run Server**
+    ```bash
+    uvicorn app.server:app --reload
+    ```
+
+    - API Documentation: http://127.0.0.1:8000/docs
+
 ### 2. Install Dependencies
 
 ```bash
@@ -80,7 +115,7 @@ The API will be accessible at `http://localhost:8000`.
 
 To verify the system end-to-end:
 
-```bash
+````bash
 python test_flow.py
 
 ## 📊 LangSmith Integration
@@ -102,7 +137,7 @@ This application includes LangSmith monitoring for tracking and debugging LLM ap
    LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
    LANGCHAIN_API_KEY=your_langsmith_api_key_here
    LANGCHAIN_PROJECT=your_project_name_here
-   ```
+````
 
 ### Local LangSmith Server
 
@@ -116,4 +151,7 @@ For local development, you can also run LangSmith locally:
    ```
 
 With LangSmith enabled, all LLM interactions and chain executions will be logged and available for inspection at your configured endpoint.
+
+```
+
 ```

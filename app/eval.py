@@ -1,5 +1,5 @@
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -8,7 +8,7 @@ load_dotenv()
 import os
 
 # Initialize LLM
-api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("GOOGLE_API_KEY")
 llm = None
 structured_llm = None
 eval_prompt = None
@@ -20,7 +20,7 @@ class FaithfulnessScore(BaseModel):
 
 if api_key:
     try:
-        llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
+        llm = ChatGoogleGenerativeAI(temperature=0, model="gemini-1.5-flash")
         structured_llm = llm.with_structured_output(FaithfulnessScore)
 
         # Prompt for evaluation
@@ -40,7 +40,7 @@ if api_key:
             """
         )
     except Exception as e:
-        print(f"Failed to initialize OpenAI LLM: {e}")
+        print(f"Failed to initialize Gemini LLM: {e}")
 
 def evaluate_candidate(job_description: str, candidate_content: str) -> dict:
     """
@@ -50,7 +50,7 @@ def evaluate_candidate(job_description: str, candidate_content: str) -> dict:
     if not structured_llm or not eval_prompt:
          return {
             "score": 0.5, 
-            "reasoning": "Evaluation skipped (OPENAI_API_KEY missing). returning default score.", 
+            "reasoning": "Evaluation skipped (GOOGLE_API_KEY missing). returning default score.", 
             "skills_found": []
         }
 

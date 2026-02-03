@@ -6,14 +6,29 @@ from langchain_huggingface import HuggingFaceEmbeddings
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VECTOR_DB_PATH = os.path.join(base_dir, "chroma_db")
 
-# Initialize Embeddings
-# Using a lightweight local model
-embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# Lazy-loaded singleton
+_vectorstore = None
+_embedding_model = None
 
-# Initialize Vector Store
-# This will be imported by other modules to access the DB
-vectorstore = Chroma(
-    persist_directory=VECTOR_DB_PATH,
-    embedding_function=embedding_model,
-    collection_name="candidate_profiles"
-)
+def get_vectorstore():
+    """
+    Returns the ChromaDB vector store instance.
+    Uses lazy loading to avoid slow startup.
+    """
+    global _vectorstore, _embedding_model
+    
+    if _vectorstore is None:
+        print("Initializing Vector Store...")
+        # Initialize embedding model
+        _embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        
+        # Initialize Chroma
+        _vectorstore = Chroma(
+            persist_directory=VECTOR_DB_PATH,
+            embedding_function=_embedding_model,
+            collection_name="candidate_profiles"
+        )
+        print(f"Vector Store ready at: {VECTOR_DB_PATH}")
+    
+    return _vectorstore
+

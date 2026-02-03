@@ -1,15 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-class Candidate(BaseModel):
-    id: str = Field(..., description="Unique identifier for the candidate")
-    name: str = Field(..., description="Full name of the candidate")
-    email: Optional[str] = Field(None, description="Email address")
-    skills: List[str] = Field(default_factory=list, description="List of technical skills")
-    experience_years: int = Field(0, description="Total years of experience")
-    summary: str = Field(..., description="Brief professional summary")
-    raw_text: str = Field(..., description="Full text from the resume")
-
 class JobDescription(BaseModel):
     title: str = Field(..., description="Job Title")
     description: str = Field(..., description="Full job description text")
