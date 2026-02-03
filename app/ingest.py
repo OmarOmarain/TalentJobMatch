@@ -8,13 +8,12 @@ from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from app.vector_store import get_vectorstore
+from app.models import CandidateMetadata
 
 load_dotenv()
 
 # --- 1. Define Metadata Schema ---
-class CandidateMetadata(BaseModel):
-    summary: str = Field(..., description="Brief 2-3 sentence professional summary")
-    top_skills: List[str] = Field(default_factory=list, description="Top 5-10 technical skills found in resume")
+# Moved to app.models
 
 # --- 2. Initialize Extraction Chain ---
 # Using Gemini Flash for speed and cost

@@ -14,6 +14,10 @@ class MatchResult(BaseModel):
     reasoning: str = Field(..., description="AI explanation for the match")
     faithfulness_score: float = Field(..., description="Faithfulness score of the explanation")
 
+class CandidateMetadata(BaseModel):
+    summary: str = Field(..., description="Brief 2-3 sentence professional summary")
+    top_skills: List[str] = Field(default_factory=list, description="Top 5-10 technical skills found in resume")
+
 class MatchResponse(BaseModel):
     total_candidates: int
     top_matches: List[MatchResult]
