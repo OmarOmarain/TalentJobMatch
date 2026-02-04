@@ -1,7 +1,6 @@
 import os
 from typing import List
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 
 from app.models import (
@@ -21,6 +20,7 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.2
 )
 
+
 # ------------------ Core Function ------------------
 
 def generate_explanations(
@@ -28,10 +28,6 @@ def generate_explanations(
     job_requirements: List[str],
     candidates: List[CandidateCard]
 ) -> List[CandidateDeepDive]:
-    """
-    Generates explainability analysis for each candidate.
-    No scoring. No judging. No assumptions.
-    """
 
     results: List[CandidateDeepDive] = []
 
@@ -56,7 +52,7 @@ CANDIDATE DATA:
 Name: {candidate.name}
 Current Title: {candidate.current_title}
 Years of Experience: {candidate.years_experience}
-Skills: {[skill.name for skill in candidate.matching_skills]}
+Skills: {candidate.skills_match}
 
 TASK:
 Explain briefly why this candidate matches or does not match the role.
@@ -68,20 +64,21 @@ Explain briefly why this candidate matches or does not match the role.
         # -------- Identified Skills --------
         identified_skills = [
             IdentifiedSkill(
-                skill=skill.name,
+                skill=skill,
                 evidence="Explicitly listed in candidate CV"
             )
-            for skill in candidate.matching_skills
+            for skill in candidate.skills_match
         ]
 
         # -------- Requirements Comparison --------
         candidate_skill_names = {
-            skill.name.lower() for skill in candidate.matching_skills
+            skill.lower() for skill in candidate.skills_match
         }
 
         requirements_comparison: List[RequirementEvidence] = []
 
         for requirement in job_requirements:
+
             if requirement.lower() in candidate_skill_names:
                 status = "met"
                 evidence = "Skill explicitly present in CV"
@@ -108,8 +105,9 @@ Explain briefly why this candidate matches or does not match the role.
         deep_dive = CandidateDeepDive(
             candidate_id=candidate.candidate_id,
             explainability=explainability,
-            faithfulness_score=0.0,   # filled later by evaluate.py
-            is_trustworthy=False      # filled later by evaluate.py
+            relevancy_score=0.0,
+            faithfulness_score=0.0,
+            is_trustworthy=False
         )
 
         results.append(deep_dive)

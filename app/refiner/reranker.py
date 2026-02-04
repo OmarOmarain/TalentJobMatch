@@ -1,42 +1,90 @@
 from typing import List
-from app.models import CandidateCard
+from dataclasses import dataclass
 from sentence_transformers import CrossEncoder
 import numpy as np
 
+
+# ------------------ Mock Models ------------------
+
+@dataclass
+class SkillChip:
+    name: str
+
+
+@dataclass
+class CandidateCard:
+    candidate_id: str
+    name: str
+    avatar_url: str | None
+    current_title: str
+    company: str
+    years_experience: int
+    seniority_level: str
+    location: str
+    score: float
+    skills_match: List[SkillChip]
+    ai_reasoning_short: str
+
+
+# ------------------ Core Function ------------------
+
+model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+cross_encoder = CrossEncoder(model_name)  
+
+
 def rerank_candidates(job_description: str, candidates: List[CandidateCard]) -> List[CandidateCard]:
-    
+
     if not candidates:
         return []
-
-    model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    cross_encoder = CrossEncoder(model_name)
 
     candidate_texts = [
         (
             job_description,
-            " ".join([skill.name for skill in c.matching_skills])  
+            " ".join(c.skills_match)  # بدل s.name
         )
         for c in candidates
     ]
 
-    scores = cross_encoder.predict(candidate_texts)  
+    scores = cross_encoder.predict(candidate_texts)
 
     for candidate, score in zip(candidates, scores):
+        score_norm = 1 / (1 + np.exp(-score))
+        candidate.score = float(score_norm)  # بدل match_score
+        candidate.ai_reasoning_short = f"CrossEncoder Score: {candidate.score:.4f}"
 
-        score_norm = 1 / (1 + np.exp(-score))  # sigmoid
-        candidate.match_score = float(score_norm)
-        candidate.ai_reasoning_short = f"Score computed by Cross-Encoder: {candidate.match_score}"
+    ranked_candidates = sorted(candidates, key=lambda c: c.score, reverse=True)
 
-    ranked_candidates = sorted(candidates, key=lambda c: c.match_score, reverse=True)
+    return ranked_candidates
+
+    if not candidates:
+        return []
+
+    candidate_texts = [
+        (
+            job_description,
+            " ".join(c.skills_match)
+
+        )
+        for c in candidates
+    ]
+
+    scores = cross_encoder.predict(candidate_texts)
+
+    for candidate, score in zip(candidates, scores):
+        score_norm = 1 / (1 + np.exp(-score))
+        candidate.score = float(score_norm)
+        candidate.ai_reasoning_short = f"CrossEncoder Score: {candidate.score:.4f}"
+
+    ranked_candidates = sorted(candidates, key=lambda c: c.score, reverse=True)
 
     return ranked_candidates
 
 
-# ------------------ اختبار سريع ------------------
-# if __name__ == "__main__":
-    from app.models import CandidateCard, SkillChip
 
-    # مثال Top-K candidates من retrieval
+# ------------------ Local Test ------------------
+
+if __name__ == "__main__":
+
     candidates = [
         CandidateCard(
             candidate_id="1",
@@ -47,8 +95,8 @@ def rerank_candidates(job_description: str, candidates: List[CandidateCard]) -> 
             years_experience=3,
             seniority_level="Mid",
             location="Cairo",
-            match_score=0.0,  # سيتم استبداله بالـ Cross-Encoder
-            matching_skills=[SkillChip(name="React"), SkillChip(name="Vue")],
+            score=0.0,
+            skills_match=[SkillChip(name="React"), SkillChip(name="Vue")],
             ai_reasoning_short=""
         ),
         CandidateCard(
@@ -60,8 +108,8 @@ def rerank_candidates(job_description: str, candidates: List[CandidateCard]) -> 
             years_experience=5,
             seniority_level="Senior",
             location="Cairo",
-            match_score=0.0,
-            matching_skills=[SkillChip(name="Vue")],
+            score=0.0,
+            skills_match=[SkillChip(name="Vue")],
             ai_reasoning_short=""
         ),
         CandidateCard(
@@ -73,16 +121,19 @@ def rerank_candidates(job_description: str, candidates: List[CandidateCard]) -> 
             years_experience=1,
             seniority_level="Junior",
             location="Cairo",
-            match_score=0.0,
-            matching_skills=[SkillChip(name="React")],
+            score=0.0,
+            skills_match=[SkillChip(name="Angular")],
             ai_reasoning_short=""
         ),
     ]
 
     jd = "Looking for a Frontend Developer skilled in React and Vue"
 
-    ranked_candidates = rerank_candidates(jd, candidates)
+    ranked = rerank_candidates(jd, candidates)
 
     print("\n--- Reranked Candidates ---")
-    for c in ranked_candidates:
-        print(f"{c.name}: score={c.match_score}, reasoning={c.ai_reasoning_short}")
+    for i, c in enumerate(ranked, 1):
+        print(f"{i}. {c.name}")
+        print(f"   Score: {c.score:.4f}")
+        print(f"   Skills: {[s.name for s in c.skills_match]}")
+        print()
