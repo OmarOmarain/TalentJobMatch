@@ -1,7 +1,8 @@
 import os
 from typing import List
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage
 
 from app.models import (
     CandidateCard,
@@ -10,6 +11,7 @@ from app.models import (
     IdentifiedSkill,
     RequirementEvidence
 )
+
 
 # ------------------ LLM ------------------
 

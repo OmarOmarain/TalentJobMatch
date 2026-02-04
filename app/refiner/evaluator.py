@@ -1,6 +1,8 @@
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage
+
 
 from app.models import CandidateDeepDive
 

@@ -1,6 +1,6 @@
 from typing import List
 from app.models import CandidateCard
-from cross_encoder import CrossEncoder
+from sentence_transformers import CrossEncoder
 import numpy as np
 
 def rerank_candidates(job_description: str, candidates: List[CandidateCard]) -> List[CandidateCard]:
