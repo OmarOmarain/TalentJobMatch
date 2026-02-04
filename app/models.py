@@ -10,13 +10,19 @@ class JobDescription(BaseModel):
         pattern="^(junior|mid|senior|lead)$",
         description="Experience level: junior, mid, senior, lead"
     )
-    
+    years_of_experience: Optional[int] = None
     department: Optional[str] = Field(
         default=None,
         max_length=100,
         description="Department or team"
     )
 
+class JobDescriptionRequest(BaseModel):
+    job_description: str = Field(
+        min_length=20,
+        description="Full job description entered by HR"
+    )
+   
 class MatchResult(BaseModel):
     candidate_id: str
     name: str
