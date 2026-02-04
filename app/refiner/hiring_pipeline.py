@@ -110,8 +110,9 @@ if __name__ == "__main__":
     from app.models import CandidateCard, IdentifiedSkill  # أو SkillChip حسب مشروعك
 
     # ----- Mock JD + Requirements -----
-    jd = "Looking for a Frontend Developer skilled in React and Vue with 2+ years experience."
-    requirements = ["React", "Vue", "JavaScript"]
+    jd = "Looking for a Frontend Engineer skilled in Vue with 5 years experience."
+    requirements = ["Vue"]
+
 
     # ----- Mock candidates -----
     candidates = [
