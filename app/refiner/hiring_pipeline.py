@@ -1,17 +1,23 @@
 from dotenv import load_dotenv
 import os
 
-load_dotenv()  # يقرأ .env
+load_dotenv()
 
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-from langchain_core.messages import HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.refiner.reranker import rerank_candidates # Reranking
-from app.refiner.scorer import calculate_match_scores # Final scoring
-from app.refiner.explainer import generate_explanations # Explainability
-from app.refiner.evaluator import evaluate_candidate  # Faithfulness & relevancy
+from app.refiner.reranker import rerank_candidates
+from app.refiner.scorer import calculate_match_scores
+from app.refiner.explainer import generate_explanations
+from app.refiner.evaluator import evaluate_candidate
 
+from app.search import combined_search_pipeline
+from app.search_adapter import search_results_to_candidates
+
+
+# =====================================================
+# LLM
+# =====================================================
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
@@ -19,6 +25,19 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.2
 )
 
+
+# =====================================================
+# BLOCK 0 — SEARCH
+# =====================================================
+
+search_block = RunnableLambda(
+    lambda x: {
+        **x,
+        "candidates": search_results_to_candidates(
+            combined_search_pipeline(x["job_description"])
+        )
+    }
+)
 
 
 # =====================================================
@@ -59,7 +78,7 @@ explain_block = RunnableLambda(
         **x,
         "deep_dives": generate_explanations(
             x["job_description"],
-            x["job_requirements"],
+            x.get("job_requirements", []),
             x["candidates"]
         )
     }
@@ -75,7 +94,6 @@ def evaluate_all(x):
     evaluated = []
 
     for deep_dive in x["deep_dives"]:
-
         evaluated.append(
             evaluate_candidate(
                 deep_dive=deep_dive,
@@ -99,6 +117,7 @@ evaluate_block = RunnableLambda(evaluate_all)
 
 hiring_pipeline = (
     RunnablePassthrough()
+    | search_block
     | rerank_block
     | score_block
     | explain_block
@@ -106,58 +125,37 @@ hiring_pipeline = (
 )
 
 
-if __name__ == "__main__":
-    from app.models import CandidateCard, IdentifiedSkill  # أو SkillChip حسب مشروعك
+# =====================================================
+# LOCAL TEST
+# =====================================================
 
-    # ----- Mock JD + Requirements -----
+if __name__ == "__main__":
+
     jd = "Looking for a Frontend Engineer skilled in Vue with 5 years experience."
+
     requirements = ["Vue"]
 
-
-    # ----- Mock candidates -----
-    candidates = [
-        CandidateCard(
-            candidate_id="1",
-            name="Alice",
-            avatar_url=None,
-            current_title="Frontend Developer",
-            company="TechCorp",
-            years_experience=3,
-            seniority_level="Mid",
-            location="Cairo",
-            score=0.0,
-            skills_match=["React", "Vue"],
-            ai_reasoning_short="",
-        ),
-        CandidateCard(
-            candidate_id="2",
-            name="Bob",
-            avatar_url=None,
-            current_title="Frontend Engineer",
-            company="Innovate",
-            years_experience=5,
-            seniority_level="Senior",
-            location="Cairo",
-            score=0.0,
-            skills_match=["Vue"],
-            ai_reasoning_short="",
-        ),
-    ]
-
-    # ----- Run pipeline -----
     result = hiring_pipeline.invoke({
         "job_description": jd,
-        "job_requirements": requirements,
-        "candidates": candidates
+        "job_requirements": requirements
     })
 
-    # ----- Print results -----
     print("\n=== Candidates After Pipeline ===\n")
+
     for c in result["candidates"]:
-        print(f"{c.name}: score={c.score}, skills={c.skills_match}, reasoning={c.ai_reasoning_short}")
+        print(
+            f"{c.name}: score={c.score}, "
+            f"skills={c.skills_match}, "
+            f"reasoning={c.ai_reasoning_short}"
+        )
 
     print("\n=== Deep Dives / Explanations ===\n")
-    for d in result["deep_dives"]:
-        print(f"{d.candidate_id}: faithfulness={d.faithfulness_score}, relevancy={d.relevancy_score}, trustworthy={d.is_trustworthy}")
-        print(f"Summary: {d.explainability.why_match_summary}\n")
 
+    for d in result["deep_dives"]:
+        print(
+            f"{d.candidate_id}: "
+            f"faithfulness={d.faithfulness_score}, "
+            f"relevancy={d.relevancy_score}, "
+            f"trustworthy={d.is_trustworthy}"
+        )
+        print(f"Summary: {d.explainability.why_match_summary}\n")

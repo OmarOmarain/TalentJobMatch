@@ -17,7 +17,7 @@ load_dotenv()
 
 # --- 2. Initialize Extraction Chain ---
 # Using Gemini Flash for speed and cost
-api_key = os.getenv("GOOGLE_API_KEY")
+api_key = os.getenv("GEMINI_API_KEY")
 llm = None
 extraction_chain = None
 

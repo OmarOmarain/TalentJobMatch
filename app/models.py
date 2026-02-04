@@ -1,11 +1,27 @@
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
-class JobDescription(BaseModel):
-    description: str = Field(..., min_length=50, description="Full job description text")
-    
-    
 
+class JobDescriptionRequest(BaseModel):
+    """Lightweight request model for API - only requires description"""
+    description: str = Field(min_length=20)
+
+
+class JobDescription(BaseModel):
+    """Internal structured job description model"""
+    title: str = Field(default="Unknown", description="Job title")
+    description: str = Field(..., description="Full job description text")
+    required_skills: List[str] = Field(default_factory=list, description="List of required skills")
+    seniority_level: Optional[str] = Field(
+        default=None,
+        pattern="^(junior|mid|senior|lead)$",
+        description="Experience level: junior, mid, senior, lead"
+    )
+    department: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="Department or team"
+    )
 
 # ---------- Atomic Models ----------
 
@@ -58,6 +74,7 @@ class MatchResult(BaseModel):
         default_factory=list,
         description="Requirement-by-requirement evaluation"
     )
+
 
 
 # ---------- Candidate Surface Card (for ranking / UI) ----------
