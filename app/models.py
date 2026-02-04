@@ -2,10 +2,27 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 class JobDescription(BaseModel):
-    title: str = Field(..., description="Job Title")
-    description: str = Field(..., description="Full job description text")
+    title: str = Field(..., min_length=3, max_length=200, description="Job Title")
+    description: str = Field(..., min_length=50, description="Full job description text")
     required_skills: List[str] = Field(default_factory=list, description="List of required skills")
+    seniority_level: Optional[str] = Field(
+        default=None,
+        pattern="^(junior|mid|senior|lead)$",
+        description="Experience level: junior, mid, senior, lead"
+    )
+    years_of_experience: Optional[int] = None
+    department: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="Department or team"
+    )
 
+class JobDescriptionRequest(BaseModel):
+    job_description: str = Field(
+        min_length=20,
+        description="Full job description entered by HR"
+    )
+   
 class MatchResult(BaseModel):
     candidate_id: str
     name: str
