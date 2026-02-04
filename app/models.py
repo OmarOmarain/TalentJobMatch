@@ -31,6 +31,28 @@ class ExplainabilityAnalysis(BaseModel):
         default_factory=list,
         description="Detailed skill extraction with evidence"
     )
+    required_skills: List[str] = Field(default_factory=list, description="List of required skills")
+    seniority_level: Optional[str] = Field(
+        default=None,
+        pattern="^(junior|mid|senior|lead)$",
+        description="Experience level: junior, mid, senior, lead"
+    )
+    years_of_experience: Optional[int] = None
+    department: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="Department or team"
+    )
+
+
+   
+class MatchResult(BaseModel):
+    candidate_id: str
+    name: str
+    score: float = Field(..., description="Overall match score (0-1)")
+    skills_match: List[str] = Field(default_factory=list, description="Skills found in both JD and Candidate")
+    reasoning: str = Field(..., description="AI explanation for the match")
+    faithfulness_score: float = Field(..., description="Faithfulness score of the explanation")
 
     requirements_comparison: List[RequirementEvidence] = Field(
         default_factory=list,

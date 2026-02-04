@@ -10,7 +10,6 @@ TalentJobMatch/
 │   ├── models.py           # Pydantic data models
 │   ├── ingest.py           # Document ingestion (PDF parsing & chunking)
 │   ├── vector_store.py     # ChromaDB configuration
-│   ├── query_expansion.py  # LLM-based multi-query generation
 │   ├── bm25_index.py       # Sparse keyword index
 │   ├── search_pipeline.py  # Hybrid search orchestrator
 │   ├── reranker.py         # Cross-encoder for result refinement
