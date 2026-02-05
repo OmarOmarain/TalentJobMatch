@@ -44,3 +44,7 @@ Thumbs.db
 
 # Project Data
 data/
+
+.venv/
+venv/
+
