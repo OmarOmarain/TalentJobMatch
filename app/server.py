@@ -13,7 +13,6 @@ from app.models import (
     MatchResult
 )
 
-
 from app.refiner.hiring_pipeline import hiring_pipeline
 
 app = FastAPI(title="Talent Job Matching API", version="1.0")
@@ -25,26 +24,22 @@ def read_root():
 
 
 @app.post("/api/v1/match/candidate", response_model=MatchResponse)
-async def match_candidates(job: JobDescriptionRequest):   # ✅ كان ناقص :
-
-    # ✅ تحويل request إلى JobDescription كامل
+async def match_candidates(job: JobDescriptionRequest):
     job_full = JobDescription(
         title="Unknown",
         description=job.description,
         required_skills=[]
     )
 
-    # ✅ تشغيل الـ pipeline
+    # Run the full hiring pipeline
     result = hiring_pipeline.invoke({
-        "job": job_full,
-        "job_description": job_full.description,
-        "job_requirements": job_full.required_skills
+        "job_description": job_full,
+        "job_requirements": []
     })
 
-    candidates = result["candidates"]
-    deep_dives = result["deep_dives"]
+    candidates = result.get("candidates", [])
+    deep_dives = result.get("deep_dives", [])
 
-    # ✅ بناء الاستجابة
     final_matches: List[MatchResult] = []
 
     for cand, deep_dive in zip(candidates, deep_dives):
@@ -55,7 +50,7 @@ async def match_candidates(job: JobDescriptionRequest):   # ✅ كان ناقص 
                 score=cand.score,
                 skills_match=cand.skills_match,
                 reasoning=cand.ai_reasoning_short,
-                faithfulness_score=deep_dive.faithfulness_score
+                faithfulness_score=deep_dive.get("faithfulness_score", 0.0)
             )
         )
 
@@ -63,6 +58,7 @@ async def match_candidates(job: JobDescriptionRequest):   # ✅ كان ناقص 
         total_candidates=len(candidates),
         top_matches=final_matches
     )
+
 
 
 if __name__ == "__main__":
