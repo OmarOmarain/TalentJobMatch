@@ -12,7 +12,7 @@ from app.refiner.explainer import generate_explanations
 from app.refiner.evaluator import evaluate_candidate
 
 from app.search import combined_search_pipeline
-from app.search_adapter import search_results_to_candidates
+from app.search_adapter import search_pipeline_to_candidates
 
 
 # =====================================================
@@ -25,7 +25,6 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.2
 )
 
-
 # =====================================================
 # BLOCK 0 — SEARCH
 # =====================================================
@@ -33,8 +32,8 @@ llm = ChatGoogleGenerativeAI(
 search_block = RunnableLambda(
     lambda x: {
         **x,
-        "candidates": search_results_to_candidates(
-            combined_search_pipeline(x["job_description"])
+        "candidates": search_pipeline_to_candidates(
+            x["job_description"]
         )
     }
 )
