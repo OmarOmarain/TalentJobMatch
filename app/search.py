@@ -1,6 +1,7 @@
 """
 Search Implementation for Job Description Processing
 """
+from app.models import JobDescription, JobDescriptionRequest
 from app.vector_store import get_vectorstore
 from app.parser import parse_job_description_request
 import os
@@ -11,73 +12,61 @@ from langchain_core.documents import Document
 from typing import List
 from langchain_classic.retrievers import BM25Retriever,EnsembleRetriever
 from langchain_google_genai import ChatGoogleGenerativeAI
-from app.models import JobDescriptionRequest, JobDescription
 
 load_dotenv()
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 @traceable(name="get_multi_query_variants", run_type="llm")
-@traceable(name="get_multi_query_variants", run_type="llm")
 def get_multi_query_variants(job, num_queries: int = 3):
-
-    # ---------- Normalize input ----------
-    if isinstance(job, str):
-
-        parsed_job = JobDescription(
-            title="Unknown",
-            description=job,
-            required_skills=[],
-            seniority_level=None,
-            department=None
-        )
-
-    elif isinstance(job, JobDescriptionRequest):
-
+    """Generates multiple query variations from either JobDescription or JobDescriptionRequest."""
+    # Handle both JobDescription and JobDescriptionRequest inputs
+    if isinstance(job, JobDescriptionRequest):
+        # Parse the request into structured JobDescription
         parsed_job = parse_job_description_request(job)
-
     elif isinstance(job, JobDescription):
-
+        # Already structured, use as-is
         parsed_job = job
-
     else:
-        raise ValueError(f"Unsupported job type: {type(job)}")
-
-    # ---------- Build JD text ----------
+        raise ValueError(f"Expected JobDescription or JobDescriptionRequest, got {type(job)}")
+    
+    # Combine all job details into comprehensive search context
     jd_text = f"""Job Title: {parsed_job.title}
 Description: {parsed_job.description}
 Required Skills: {', '.join(parsed_job.required_skills) if parsed_job.required_skills else 'Not specified'}
 Seniority Level: {parsed_job.seniority_level or 'Not specified'}
 Department: {parsed_job.department or 'Not specified'}
 """
-
-    # ---------- Prompt ----------
+    
     multi_query_prompt = PromptTemplate(
         input_variables=["question"],
-        template="""You are a professional technical recruiter.
-
-Generate 3 alternative search queries for CV retrieval.
-
-Job Details: {question}
-
-Output:
-VERSION 1: ...
-VERSION 2: ...
-VERSION 3: ...
-"""
+        template="""You are a professional technical recruiter with expertise in CV matching.
+        Your task is to generate 3 different alternative search queries based on the following job details
+        to help find the best candidate CVs in a vector database.
+        
+        Focus on:
+        - Technical skills and technologies required
+        - Core job responsibilities
+        - Experience level and seniority
+        
+        Job Details: {question}
+        
+        Generate 3 alternative search queries. Output format:
+        VERSION 1: [first query]
+        VERSION 2: [second query]
+        VERSION 3: [third query]"""
     )
+  
 
-    chain = multi_query_prompt | llm
+    chain = multi_query_prompt | llm 
+
     response = chain.invoke({"question": jd_text})
-
+    
+   
     generated_queries = response.content.split("\n")
-
-    final_queries = [
-        q.split(":")[-1].strip()
-        for q in generated_queries
-        if ":" in q
-    ]
+    
+    final_queries = [q.split(":")[-1].strip() for q in generated_queries if ":" in q]
 
     if not final_queries:
-        final_queries = [parsed_job.description]
+        final_queries = [f"{parsed_job.title} {', '.join(parsed_job.required_skills[:5])}"]
 
     return final_queries[:num_queries]
 

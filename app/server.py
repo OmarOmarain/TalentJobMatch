@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from typing import List
 
+
 load_dotenv()
 
 from app.models import (
