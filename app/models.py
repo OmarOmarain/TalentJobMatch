@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class JobDescriptionRequest(BaseModel):
     """Lightweight request model for API - only requires description"""
-    description: str = Field(min_length=20)
+    job_description: str = Field(min_length=20)
 
 
 class JobDescription(BaseModel):

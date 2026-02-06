@@ -1,8 +1,6 @@
 from dotenv import load_dotenv
 import os
 
-load_dotenv()
-
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -14,14 +12,14 @@ from app.refiner.evaluator import evaluate_candidate
 from app.search import combined_search_pipeline
 from app.search_adapter import search_pipeline_to_candidates
 
-
+load_dotenv()
 # =====================================================
 # LLM
 # =====================================================
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
-    google_api_key=os.environ["GEMINI_API_KEY"],
+    google_api_key=os.environ["GOOGLE_API_KEY"],
     temperature=0.2
 )
 
