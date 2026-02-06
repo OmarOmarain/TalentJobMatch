@@ -13,7 +13,6 @@ from app.models import (
     MatchResult
 )
 
-from app.refiner.hiring_pipeline import hiring_pipeline
 
 app = FastAPI(title="Talent Job Matching API", version="1.0")
 
@@ -25,6 +24,7 @@ def read_root():
 
 @app.post("/api/v1/match/candidate", response_model=MatchResponse)
 async def match_candidates(job: JobDescriptionRequest):
+    from app.refiner.hiring_pipeline import hiring_pipeline
     job_full = JobDescription(
         title="Unknown",
         description=job.description,
@@ -63,4 +63,6 @@ async def match_candidates(job: JobDescriptionRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.server:app", host="0.0.0.0", port=8000, reload=True)
+    # Use the PORT env var if it exists (Render), otherwise default to 8000 (Local)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app.server:app", host="0.0.0.0", port=port, reload=True)
