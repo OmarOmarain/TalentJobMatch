@@ -32,14 +32,14 @@ model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 cross_encoder = CrossEncoder(model_name)  
 
 
-def rerank_candidates(job_description: str, candidates: List[CandidateCard]) -> List[CandidateCard]:
+def rerank_candidates(description: str, candidates: List[CandidateCard]) -> List[CandidateCard]:
 
     if not candidates:
         return []
 
     candidate_texts = [
         (
-            job_description,
+            description,
             " ".join(c.skills_match)  # بدل s.name
         )
         for c in candidates
@@ -61,7 +61,7 @@ def rerank_candidates(job_description: str, candidates: List[CandidateCard]) -> 
 
     candidate_texts = [
         (
-            job_description,
+            description,
             " ".join(c.skills_match)
 
         )

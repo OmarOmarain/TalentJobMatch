@@ -13,6 +13,7 @@ from app.search import combined_search_pipeline
 from app.search_adapter import search_pipeline_to_candidates
 
 load_dotenv()
+
 # =====================================================
 # LLM
 # =====================================================
@@ -30,12 +31,9 @@ llm = ChatGoogleGenerativeAI(
 search_block = RunnableLambda(
     lambda x: {
         **x,
-        "candidates": search_pipeline_to_candidates(
-            x["job_description"]
-        )
+        "candidates": search_pipeline_to_candidates(x["description"])
     }
 )
-
 
 # =====================================================
 # BLOCK 1 — RERANK
@@ -45,12 +43,11 @@ rerank_block = RunnableLambda(
     lambda x: {
         **x,
         "candidates": rerank_candidates(
-            x["job_description"],
+            x["description"].description if hasattr(x["description"], 'description') else x["description"],
             x["candidates"]
         )
     }
 )
-
 
 # =====================================================
 # BLOCK 2 — SCORE
@@ -59,12 +56,9 @@ rerank_block = RunnableLambda(
 score_block = RunnableLambda(
     lambda x: {
         **x,
-        "candidates": calculate_match_scores(
-            x["candidates"]
-        )
+        "candidates": calculate_match_scores(x["candidates"])
     }
 )
-
 
 # =====================================================
 # BLOCK 3 — EXPLAIN
@@ -74,39 +68,38 @@ explain_block = RunnableLambda(
     lambda x: {
         **x,
         "deep_dives": generate_explanations(
-            x["job_description"],
+            x["description"].description if hasattr(x["description"], 'description') else x["description"],
             x.get("job_requirements", []),
             x["candidates"]
         )
     }
 )
 
-
 # =====================================================
 # BLOCK 4 — EVALUATE
 # =====================================================
 
 def evaluate_all(x):
-
     evaluated = []
-
+    
     for deep_dive in x["deep_dives"]:
+        description_text = (
+            x["description"].description 
+            if hasattr(x["description"], 'description') 
+            else str(x["description"])
+        )
+        
         evaluated.append(
             evaluate_candidate(
                 deep_dive=deep_dive,
-                job_description=x["job_description"],
+                description=description_text,
                 cv_evidence=str(x["candidates"])
             )
         )
+    
+    return {**x, "deep_dives": evaluated}
 
-    return {
-        **x,
-        "deep_dives": evaluated
-    }
-
-
-evaluate_block = RunnableLambda(evaluate_all)
-
+evaluate_block = RunnableLambda(evaluate_all)  # ✅ أضف هذا السطر!
 
 # =====================================================
 # FULL PIPELINE
@@ -121,38 +114,23 @@ hiring_pipeline = (
     | evaluate_block
 )
 
-
 # =====================================================
 # LOCAL TEST
 # =====================================================
 
 if __name__ == "__main__":
-
     jd = "Looking for a Frontend Engineer skilled in Vue with 5 years experience."
-
     requirements = ["Vue"]
-
+    
     result = hiring_pipeline.invoke({
-        "job_description": jd,
+        "description": jd,
         "job_requirements": requirements
     })
-
+    
     print("\n=== Candidates After Pipeline ===\n")
-
     for c in result["candidates"]:
-        print(
-            f"{c.name}: score={c.score}, "
-            f"skills={c.skills_match}, "
-            f"reasoning={c.ai_reasoning_short}"
-        )
-
+        print(f"{c.name}: score={c.score}, skills={c.skills_match}")
+    
     print("\n=== Deep Dives / Explanations ===\n")
-
     for d in result["deep_dives"]:
-        print(
-            f"{d.candidate_id}: "
-            f"faithfulness={d.faithfulness_score}, "
-            f"relevancy={d.relevancy_score}, "
-            f"trustworthy={d.is_trustworthy}"
-        )
-        print(f"Summary: {d.explainability.why_match_summary}\n")
+        print(f"{d.candidate_id}: faithfulness={d.faithfulness_score}")

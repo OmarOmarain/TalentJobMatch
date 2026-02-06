@@ -28,7 +28,7 @@ def extract_score(text: str) -> float:
     matches = re.findall(r"0\.\d+|1\.0+|1|0", text)
 
     if matches:
-        return float(matches[-1])  # آخر رقم غالباً هو النتيجة
+        return float(matches[-1]) 
 
     return 0.0
 
@@ -70,7 +70,7 @@ EXPLANATION:
 # -------------------------
 def evaluate_relevancy(
     explanation: str,
-    job_description: str
+    description: str
 ) -> float:
 
     prompt = f"""
@@ -83,7 +83,7 @@ Return ONLY ONE NUMBER between 0.0 and 1.0.
 Do not explain.
 
 JOB DESCRIPTION:
-{job_description}
+{description}
 
 EXPLANATION:
 {explanation}
@@ -98,7 +98,7 @@ EXPLANATION:
 # -------------------------
 def evaluate_candidate(
     deep_dive: CandidateDeepDive,
-    job_description: str,
+    description: str,
     cv_evidence: str,
     faithfulness_threshold: float = 0.75,
     relevancy_threshold: float = 0.70
@@ -113,7 +113,7 @@ def evaluate_candidate(
 
     relevancy = evaluate_relevancy(
         explanation_text,
-        job_description
+        description
     )
 
     deep_dive.faithfulness_score = faithfulness

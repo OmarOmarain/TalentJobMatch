@@ -26,7 +26,7 @@ llm = ChatGoogleGenerativeAI(
 # ------------------ Core Function ------------------
 
 def generate_explanations(
-    job_description: str,
+    description: str,
     job_requirements: List[str],
     candidates: List[CandidateCard]
 ) -> List[CandidateDeepDive]:
@@ -45,7 +45,7 @@ STRICT RULES:
 - If evidence does not exist, say so explicitly
 
 JOB DESCRIPTION:
-{job_description}
+{description}
 
 JOB REQUIREMENTS:
 {job_requirements}

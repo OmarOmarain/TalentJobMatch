@@ -30,14 +30,14 @@ def parse_job_description_request(request: JobDescriptionRequest) -> JobDescript
     
     try:
         # Construct the final prompt
-        full_prompt = f"{instruction}\n\nJob Description Text:\n{request.job_description}"
+        full_prompt = f"{instruction}\n\nJob Description Text:\n{request.description}"
         
         # Invoke the structured LLM
         structured_jd = structured_llm.invoke(full_prompt)
         
         # Ensure the description field is populated with the original text if LLM misses it
         if not structured_jd.description:
-            structured_jd.description = request.job_description
+            structured_jd.description = request.description
             
         return structured_jd
         
@@ -46,7 +46,7 @@ def parse_job_description_request(request: JobDescriptionRequest) -> JobDescript
         # Robust Fallback to keep the system running
         return JobDescription(
             title="Undefined", # Generic title
-            description=request.job_description,
+            description=request.description,
             required_skills=[],
             seniority_level="mid" # Default to mid-level
         )
