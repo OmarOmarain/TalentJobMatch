@@ -14,7 +14,7 @@ from app.models import (
 from app.refiner.hiring_pipeline import hiring_pipeline
 from app.performance_monitor import timing_decorator, perf_monitor
 
-app = FastAPI(title="Talent Job Matching API", version="1.0")
+app = FastAPI(title="Talent Job Matching API", version="1.0",debug=True)
 
 @app.get("/")
 def read_root():
