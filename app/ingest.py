@@ -1,6 +1,6 @@
 import os
 from typing import List, Optional
-from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_community.document_loaders import PDFPlumberLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -17,7 +17,7 @@ load_dotenv()
 
 # --- 2. Initialize Extraction Chain ---
 # Using Gemini Flash for speed and cost
-api_key = os.getenv("GEMINI_API_KEY")
+api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 llm = None
 extraction_chain = None
 
@@ -46,7 +46,9 @@ def extract_metadata(text: str, source: str) -> dict:
     if not extraction_chain:
          return {
             "summary": "AI Extraction Disabled (Missing Key)",
-            "top_skills": []
+            "top_skills": [],
+            "years_of_experience": None,
+            "job_title": None,
         }
 
     try:
@@ -61,7 +63,9 @@ def extract_metadata(text: str, source: str) -> dict:
         print(f"Error extracting metadata for {source}: {e}")
         return {
             "summary": "Extraction failed",
-            "top_skills": []
+            "top_skills": [],
+            "years_of_experience": None,
+            "job_title": None,
         }
 
 def ingest_documents(directory_path: str):
@@ -86,7 +90,8 @@ def ingest_documents(directory_path: str):
         docs = []
         try:
             if filename.endswith(".pdf"):
-                docs = PyPDFLoader(file_path).load()
+                # Using PDFPlumber for better table extraction
+                docs = PDFPlumberLoader(file_path).load()
             elif filename.endswith(".txt"):
                 docs = TextLoader(file_path, encoding='utf-8').load()
         except Exception as e:
@@ -98,6 +103,11 @@ def ingest_documents(directory_path: str):
 
         # B. Merge text for AI analysis (Resume is usually one logical document)
         full_text = "\n".join([d.page_content for d in docs])
+        print(f"  -> Extracted Text Length: {len(full_text)} chars")
+        
+        if not full_text:
+             print(f"  -> WARNING: No text extracted from {filename}. Is it scanned?")
+             continue
         
         # C. Extract Metadata
         meta_data = extract_metadata(full_text, filename)
@@ -106,7 +116,8 @@ def ingest_documents(directory_path: str):
         print(f"  -> Extracted: {len(meta_data['top_skills'])} skills")
 
         # D. Split & Attach Metadata
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        # Revised Strategy: larger chunks (1000) with good overlap (200) to keep context
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         splits = text_splitter.split_documents(docs)
         
         for split in splits:
@@ -120,8 +131,14 @@ def ingest_documents(directory_path: str):
             # For now, let's keep page_content as is, but metadata is rich.
         
         # E. Save
-        vectorstore.add_documents(splits)
-        print(f"  -> Saved {len(splits)} chunks to DB.")
+        if splits:
+            try:
+                vectorstore.add_documents(splits)
+                print(f"  -> Saved {len(splits)} chunks to DB.")
+            except Exception as e:
+                print(f"  -> Error saving to DB for {filename}: {e}")
+        else:
+            print(f"  -> No splits found for {filename}. Skipping DB save.")
 
 if __name__ == "__main__":
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -146,6 +146,8 @@ class CandidateAnalysisResponse(BaseModel):
 class CandidateMetadata(BaseModel):
     summary: str = Field(..., description="Brief 2-3 sentence professional summary")
     top_skills: List[str] = Field(default_factory=list, description="Top 5-10 technical skills found in resume")
+    years_of_experience: Optional[int] = Field(None, description="Total years of professional experience")
+    job_title: Optional[str] = Field(None, description="Most recent or relevant job title")
 
 
 class MatchResult(BaseModel):
