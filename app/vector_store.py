@@ -20,9 +20,13 @@ def get_vectorstore():
     if _vectorstore is None:
         print("Initializing Vector Store...")
         # Initialize embedding model
-        _embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        _embedding_model = HuggingFaceEmbeddings(
+            model_name="all-MiniLM-L6-v2",
+            model_kwargs={'device': 'cpu'},  # Specify device to optimize performance
+            encode_kwargs={'normalize_embeddings': True}  # Optimize encoding
+        )
         
-        # Initialize Chroma
+        # Initialize Chroma with optimized settings
         _vectorstore = Chroma(
             persist_directory=VECTOR_DB_PATH,
             embedding_function=_embedding_model,
