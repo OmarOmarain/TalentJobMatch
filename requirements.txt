@@ -14,3 +14,4 @@ pypdf
 sentence-transformers
 rank_bm25
 pydantic
+pdfplumber
