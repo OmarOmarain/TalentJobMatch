@@ -80,30 +80,47 @@ def hybrid_search(parsed_job: JobDescription, queries: List[str], k_fetch: int =
     """
     vectorstore = get_vectorstore()
     
-    all_docs = vectorstore.get()  # جلب كل الوثائق (أو عينة منها)
-    documents = [
-        Document(page_content=text, metadata=meta) 
-        for text, meta in zip(all_docs['documents'], all_docs['metadatas'])
-    ]
+    # Optimize by using the vector store's native retrieval first
+    # This avoids loading all documents into memory
+    vector_retriever = vectorstore.as_retriever(search_kwargs={"k": k_fetch})
     
-    keyword_retriever = BM25Retriever.from_documents(documents)
+    # Create a combined query from the job title and all query variants
+    combined_query = f"{parsed_job.title} " + " ".join(queries)
+    
+    # Get vector search results first
+    vector_results = vector_retriever.invoke(combined_query)
+    
+    # Use the same set of documents for both retrievers to avoid reloading
+    keyword_retriever = BM25Retriever.from_documents(vector_results)
     keyword_retriever.k = k_fetch
 
-    vector_retriever = vectorstore.as_retriever(search_kwargs={"k": k_fetch})
+    # Use individual retrievers and combine results manually
+    vector_results = vector_retriever.invoke(combined_query)
+    keyword_results = keyword_retriever.invoke(combined_query)
 
-    ensemble_retriever = EnsembleRetriever(
-        retrievers=[vector_retriever, keyword_retriever],
-        weights=[0.5, 0.5]
-    )
-
-    combined_query = f"{parsed_job.title} " + " ".join(queries)
-    hybrid_docs = ensemble_retriever.invoke(combined_query)
+    # Deduplicate results while preserving order and scores
+    seen_content = set()
+    final_results = []
+    
+    # Add vector results first (typically more semantically relevant)
+    for doc in vector_results:
+        content = doc.page_content
+        if content not in seen_content:
+            seen_content.add(content)
+            final_results.append(doc)
+    
+    # Add keyword results that aren't already in the list
+    for doc in keyword_results:
+        content = doc.page_content
+        if content not in seen_content:
+            seen_content.add(content)
+            final_results.append(doc)
 
     return [{
         "content": doc.page_content,
         "metadata": doc.metadata,
         "initial_score": getattr(doc, 'metadata', {}).get('relevance_score', 0.0)
-    } for doc in hybrid_docs[:k_fetch]]
+    } for doc in final_results[:k_fetch]]
 
 @traceable(name="combined_search_pipeline", run_type="chain")
 def combined_search_pipeline(job, k: int = 10):

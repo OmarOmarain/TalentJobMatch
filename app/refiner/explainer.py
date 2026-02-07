@@ -2,6 +2,7 @@ import os
 from typing import List
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
+from dotenv import load_dotenv
 
 from app.models import (
     CandidateCard,
@@ -13,10 +14,11 @@ from app.models import (
 
 
 # ------------------ LLM ------------------
+load_dotenv()
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
-    google_api_key=os.environ["GEMINI_API_KEY"],
+    google_api_key=os.environ["GOOGLE_API_KEY"],
     temperature=0.2
 )
 
@@ -24,7 +26,7 @@ llm = ChatGoogleGenerativeAI(
 # ------------------ Core Function ------------------
 
 def generate_explanations(
-    job_description: str,
+    description: str,
     job_requirements: List[str],
     candidates: List[CandidateCard]
 ) -> List[CandidateDeepDive]:
@@ -43,7 +45,7 @@ STRICT RULES:
 - If evidence does not exist, say so explicitly
 
 JOB DESCRIPTION:
-{job_description}
+{description}
 
 JOB REQUIREMENTS:
 {job_requirements}

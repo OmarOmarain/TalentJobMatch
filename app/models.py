@@ -3,12 +3,11 @@ from pydantic import BaseModel, Field
 
 
 class JobDescriptionRequest(BaseModel):
-    """Lightweight request model for API - only requires description"""
     description: str = Field(min_length=20)
 
 
+
 class JobDescription(BaseModel):
-    """Internal structured job description model"""
     title: str = Field(default="Unknown", description="Job title")
     description: str = Field(..., description="Full job description text")
     required_skills: List[str] = Field(default_factory=list, description="List of required skills")
