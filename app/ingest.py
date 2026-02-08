@@ -29,6 +29,7 @@ if api_key:
         extraction_prompt = ChatPromptTemplate.from_template(
             """You are an expert HR Resume Parser.
             Extract the following structured information from the candidate's resume text below.
+            Pay special attention to the very beginning of the resume for the candidate's name.
             
             Resume Text:
             {text}
@@ -52,13 +53,19 @@ def extract_metadata(text: str, source: str) -> dict:
         }
 
     try:
-        # We process the first 4000 chars roughly to capture the main profile 
+        # We process the first 4000 chars roughly to capture the main profile
         print(f"Extracting metadata from {source}...")
         metadata = extraction_chain.invoke({
             "text": text[:4000],
             "format_instructions": parser.get_format_instructions()
         })
-        return metadata.model_dump()
+        result = metadata.model_dump()
+        
+        # Extract candidate ID from source filename
+        candidate_id = os.path.splitext(source)[0]  # Remove file extension
+        result["candidate_id"] = candidate_id
+        
+        return result
     except Exception as e:
         print(f"Error extracting metadata for {source}: {e}")
         return {
@@ -111,7 +118,11 @@ def ingest_documents(directory_path: str):
         
         # C. Extract Metadata
         meta_data = extract_metadata(full_text, filename)
-        meta_data["source"] = filename # Keep filename as ID
+        meta_data["source"] = filename # Keep filename as source
+        
+        # Set candidate_id from filename (without extension)
+        candidate_id = os.path.splitext(filename)[0]
+        meta_data["candidate_id"] = candidate_id
         
         print(f"  -> Extracted: {len(meta_data['top_skills'])} skills")
 
@@ -122,10 +133,14 @@ def ingest_documents(directory_path: str):
         
         for split in splits:
             # We add the AI metadata to *every* chunk
-            # ChromaDB doesn't support lists in metadata, so we join skills into a string
+            # For now, keeping skills as string due to ChromaDB limitations
+            # Later, we'll handle the conversion back to list in the search adapter
             safe_metadata = meta_data.copy()
             if "top_skills" in safe_metadata and isinstance(safe_metadata["top_skills"], list):
-                safe_metadata["top_skills"] = ", ".join(safe_metadata["top_skills"])
+                safe_metadata["top_skills_string"] = ", ".join(safe_metadata["top_skills"])  # Keep as string for storage
+                safe_metadata["top_skills"] = safe_metadata["top_skills"]  # Also keep the original list
+            else:
+                safe_metadata["top_skills_string"] = str(safe_metadata.get("top_skills", ""))
             
             split.metadata.update(safe_metadata)
             # For now, let's keep page_content as is, but metadata is rich.

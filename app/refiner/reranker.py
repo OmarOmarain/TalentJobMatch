@@ -1,35 +1,13 @@
 from typing import List
-from dataclasses import dataclass
 from sentence_transformers import CrossEncoder
 import numpy as np
-
-
-# ------------------ Mock Models ------------------
-
-@dataclass
-class SkillChip:
-    name: str
-
-
-@dataclass
-class CandidateCard:
-    candidate_id: str
-    name: str
-    avatar_url: str | None
-    current_title: str
-    company: str
-    years_experience: int
-    seniority_level: str
-    location: str
-    score: float
-    skills_match: List[SkillChip]
-    ai_reasoning_short: str
+from app.models import CandidateCard
 
 
 # ------------------ Core Function ------------------
 
 model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-cross_encoder = CrossEncoder(model_name)  
+cross_encoder = CrossEncoder(model_name)
 
 
 def rerank_candidates(description: str, candidates: List[CandidateCard]) -> List[CandidateCard]:
@@ -40,30 +18,7 @@ def rerank_candidates(description: str, candidates: List[CandidateCard]) -> List
     candidate_texts = [
         (
             description,
-            " ".join(c.skills_match)  # بدل s.name
-        )
-        for c in candidates
-    ]
-
-    scores = cross_encoder.predict(candidate_texts)
-
-    for candidate, score in zip(candidates, scores):
-        score_norm = 1 / (1 + np.exp(-score))
-        candidate.score = float(score_norm)  # بدل match_score
-        candidate.ai_reasoning_short = f"CrossEncoder Score: {candidate.score:.4f}"
-
-    ranked_candidates = sorted(candidates, key=lambda c: c.score, reverse=True)
-
-    return ranked_candidates
-
-    if not candidates:
-        return []
-
-    candidate_texts = [
-        (
-            description,
-            " ".join(c.skills_match)
-
+            " ".join(c.skills_match) if isinstance(c.skills_match, list) else str(c.skills_match)
         )
         for c in candidates
     ]

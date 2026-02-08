@@ -6,6 +6,7 @@ then converts the results to CandidateCard objects using search_results_to_candi
 
 from typing import List, Union, Any
 import re
+import os
 from app.models import CandidateCard, JobDescription, JobDescriptionRequest
 from app.search import combined_search_pipeline
 
@@ -104,8 +105,9 @@ def search_pipeline_to_candidates(
         raw_skills = None
         skill_field_used = None
         
+        # Check for skills in multiple possible fields
         possible_skill_fields = [
-            'skills', 'top_skills', 'skill', 'skills_match',
+            'skills_match', 'top_skills', 'skills', 'skill',
             'technologies', 'technology', 'tools', 'expertise',
             'competencies', 'qualifications', 'proficiencies'
         ]
@@ -117,6 +119,13 @@ def search_pipeline_to_candidates(
                 print(f" Found skills in field '{field}': {raw_skills!r}")
                 print(f" Type of raw_skills: {type(raw_skills)}")
                 break
+        
+        # If we couldn't find skills in the primary fields, check the string version
+        if raw_skills is None or (isinstance(raw_skills, str) and not raw_skills.strip()):
+            if 'top_skills_string' in meta:
+                raw_skills = meta['top_skills_string']
+                skill_field_used = 'top_skills_string'
+                print(f" Found skills in backup field 'top_skills_string': {raw_skills!r}")
         
         if raw_skills is None:
             raw_skills = []
@@ -130,6 +139,14 @@ def search_pipeline_to_candidates(
         
         candidate_id = meta.get("candidate_id", idx)
         name = meta.get("name", f"Candidate_{idx}")
+        
+        # If name is still a generic "Candidate_X", try to extract from filename
+        if name.startswith("Candidate_") and "source" in meta:
+            source_filename = meta["source"]
+            # Remove extension and use as name if it looks like a name
+            name_without_ext = os.path.splitext(source_filename)[0]
+            if name_without_ext and not name_without_ext.isdigit():
+                name = name_without_ext.replace("_", " ").replace("-", " ").title()
         
         years_experience = meta.get("years_experience", 0)
         if isinstance(years_experience, str):
@@ -157,9 +174,8 @@ def search_pipeline_to_candidates(
                 seniority_level=str(meta.get("seniority", "Unknown")),
                 location=str(meta.get("location", "")),
                 score=float(res.get("score", 0.0)),
-                skills_match=skills,  
-                ai_reasoning_short="",
-                content=str(res.get("content", "")),
+                skills_match=skills,
+                ai_reasoning_short=""
             )
             
             candidates.append(candidate)
@@ -181,9 +197,8 @@ def search_pipeline_to_candidates(
                     seniority_level=str(meta.get("seniority", "Unknown")),
                     location=str(meta.get("location", "")),
                     score=float(res.get("score", 0.0)),
-                    skills_match=[], 
-                    ai_reasoning_short="",
-                    content=str(res.get("content", "")),
+                    skills_match=[],
+                    ai_reasoning_short=""
                 )
                 candidates.append(candidate)
                 print(f" Created CandidateCard with empty skills list")
