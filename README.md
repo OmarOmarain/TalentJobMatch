@@ -7,19 +7,32 @@ An AI-powered system for matching candidate profiles (PDF/Text) to job descripti
 ```text
 TalentJobMatch/
 ├── app/
-│   ├── models.py           # Pydantic data models
+│   ├── __init__.py
+│   ├── core.py
 │   ├── ingest.py           # Document ingestion (PDF parsing & chunking)
+│   ├── models.py           # Pydantic data models
+│   ├── parser.py
+│   ├── performance_monitor.py
+│   ├── search.py           # Search implementation
+│   ├── search_adapter.py   # Search adapter for hybrid search
+│   ├── server.py           # FastAPI backend
 │   ├── vector_store.py     # ChromaDB configuration
-│   ├── bm25_index.py       # Sparse keyword index
-│   ├── search_pipeline.py  # Hybrid search orchestrator
-│   ├── reranker.py         # Cross-encoder for result refinement
-│   ├── eval.py             # LLM-based faithfulness check
-│   └── server.py           # FastAPI backend
+│   └── refiner/            # Refinement modules
+│       ├── __init__.py
+│       ├── evaluator.py    # LLM-based faithfulness and relevancy evaluation using Google Gemini
+│       ├── explainer.py    # Explanation generator
+│       ├── hiring_pipeline.py # Hiring pipeline orchestrator
+│       ├── reranker.py     # Cross-encoder for result refinement
+│       └── scorer.py       # Scoring implementation
 ├── data/                   # Directory for candidate PDFs/resumes
 ├── chroma_db/              # Persisted Vector Database
+├── PERFORMANCE_OPTIMIZATION.md
+├── performance_test.py
 ├── test_flow.py            # Verification and test script
+├── test_langsmith.py
 ├── requirements.txt        # Python dependencies
-└── .env                    # Environment variables
+├── README.md
+└── .env.example          # Environment variables example
 ```
 
 ## 🚀 Installation & Setup
