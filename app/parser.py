@@ -1,6 +1,8 @@
 from app.models import JobDescription, JobDescriptionRequest
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langsmith import traceable
+from app.core import get_llm
+
 import os
 
 @traceable(name="Parse_JD_Task", run_type="parser")
@@ -12,7 +14,7 @@ def parse_job_description_request(request: JobDescriptionRequest) -> JobDescript
     
     # 1. Initialize LLM (Using 1.5-flash for speed and reliable extraction)
     # Note: 'gemini-2.0-flash' can also be used if available in your region.
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+    llm = get_llm(temperature=0.0)
     
     # 2. Bind the LLM to your Pydantic model
     # This forces the AI to return data in the exact format of your JobDescription class

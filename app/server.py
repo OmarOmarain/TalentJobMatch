@@ -1,4 +1,5 @@
 import os
+import time
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from typing import List
@@ -6,15 +7,15 @@ from typing import List
 load_dotenv()
 
 from app.models import (
-    JobDescription,
     JobDescriptionRequest,
     MatchResponse,
     MatchResult
 )
-from app.refiner.hiring_pipeline import hiring_pipeline
+
+from app.refiner.hiring_pipeline import run_hiring_pipeline
 from app.performance_monitor import timing_decorator, perf_monitor
 
-app = FastAPI(title="Talent Job Matching API", version="1.0",debug=True)
+app = FastAPI(title="Talent Job Matching API", version="1.0", debug=True)
 
 @app.get("/")
 def read_root():
@@ -23,48 +24,41 @@ def read_root():
 @app.post("/api/v1/match/candidate", response_model=MatchResponse)
 @timing_decorator
 async def match_candidates(job: JobDescriptionRequest):
-    import time
     start_time = time.time()
     
-    job_full = JobDescription(
-        title="Unknown",
-        description=job.description,
-        required_skills=[]
-    )
-    
     pipeline_start = time.time()
-    result = hiring_pipeline.invoke({
-        "description": job_full,
-        "job_requirements": []
+    
+    result = run_hiring_pipeline({
+        "description": job.description,
+        "job_requirements": [] 
     })
+    
     pipeline_end = time.time()
     perf_monitor.record_metric("hiring_pipeline_execution", pipeline_end - pipeline_start)
     
-    candidates = result.get("candidates", [])
-    deep_dives = result.get("deep_dives", [])
-    
+    total_found = result.get("total_candidates", 0)
+    top_matches_data = result.get("top_matches", [])
+
     final_matches: List[MatchResult] = []
-    
-    for cand, deep_dive in zip(candidates, deep_dives):
+    for item in top_matches_data:
         final_matches.append(
             MatchResult(
-                candidate_id=cand.candidate_id,
-                name=cand.name,
-                score=cand.score,
-                skills_match=cand.skills_match,
-                reasoning=cand.ai_reasoning_short,
-                faithfulness_score=deep_dive.faithfulness_score
+                candidate_id=item["candidate_id"],
+                name=item["name"],
+                score=item["score"],
+                skills_match=item["skills_match"],
+                reasoning=item["reasoning"],
+                faithfulness_score=item["faithfulness_score"]
             )
         )
     
     end_time = time.time()
     perf_monitor.record_metric("match_candidates_total", end_time - start_time)
     
-    # Print performance report after processing
     perf_monitor.print_report()
     
     return MatchResponse(
-        total_candidates=len(candidates),
+        total_candidates=total_found,
         top_matches=final_matches
     )
 

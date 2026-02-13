@@ -12,9 +12,10 @@ from langchain_core.documents import Document
 from typing import List
 from langchain_classic.retrievers import BM25Retriever,EnsembleRetriever
 from langchain_google_genai import ChatGoogleGenerativeAI
+from app.core import get_llm
 
 load_dotenv()
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+llm = get_llm(temperature=0.0)
 @traceable(name="get_multi_query_variants", run_type="llm")
 def get_multi_query_variants(job, num_queries: int = 3):
     """Generates multiple query variations from either JobDescription or JobDescriptionRequest."""

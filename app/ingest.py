@@ -1,166 +1,110 @@
 import os
-from typing import List, Optional
+import time
+from typing import List, Dict
 from langchain_community.document_loaders import PDFPlumberLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import PydanticOutputParser
-from pydantic import BaseModel, Field
+from langchain_core.output_parsers import JsonOutputParser
 from dotenv import load_dotenv
 from app.vector_store import get_vectorstore
-from app.models import CandidateMetadata
+from app.core import get_llm
 
-load_dotenv()
 
-# --- 1. Define Metadata Schema ---
-# Moved to app.models
+llm = get_llm(temperature=0.0)
 
-# --- 2. Initialize Extraction Chain ---
-# Using Gemini Flash for speed and cost
-api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-llm = None
-extraction_chain = None
 
-if api_key:
-    try:
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash",temperature=0) 
-        parser = PydanticOutputParser(pydantic_object=CandidateMetadata)
-
-        extraction_prompt = ChatPromptTemplate.from_template(
-            """You are an expert HR Resume Parser.
-            Extract the following structured information from the candidate's resume text below.
-            Pay special attention to the very beginning of the resume for the candidate's name.
-            
-            Resume Text:
-            {text}
-            
-            {format_instructions}
-            """
-        )
-
-        extraction_chain = extraction_prompt | llm | parser
-    except Exception as e:
-        print(f"Failed to initialize Gemini: {e}")
-
-def extract_metadata(text: str, source: str) -> dict:
-    """Helper to run LLM extraction on full resume text."""
-    if not extraction_chain:
-         return {
-            "summary": "AI Extraction Disabled (Missing Key)",
-            "top_skills": [],
-            "years_of_experience": None,
-            "job_title": None,
-        }
-
-    try:
-        # We process the first 4000 chars roughly to capture the main profile
-        print(f"Extracting metadata from {source}...")
-        metadata = extraction_chain.invoke({
-            "text": text[:4000],
-            "format_instructions": parser.get_format_instructions()
-        })
-        result = metadata.model_dump()
-        
-        # Extract candidate ID from source filename
-        candidate_id = os.path.splitext(source)[0]  # Remove file extension
-        result["candidate_id"] = candidate_id
-        
-        return result
-    except Exception as e:
-        print(f"Error extracting metadata for {source}: {e}")
-        return {
-            "summary": "Extraction failed",
-            "top_skills": [],
-            "years_of_experience": None,
-            "job_title": None,
-        }
-
-def ingest_documents(directory_path: str):
+BATCH_EXTRACTION_PROMPT = ChatPromptTemplate.from_template(
+    """You are an expert HR Resume Parser. 
+    I will provide you with a list of resume texts. 
+    For EACH resume, extract: name, top_skills (as a list), years_of_experience (as integer), and job_title.
+    
+    Resumes Data:
+    {resumes_block}
+    
+    Return the output as a JSON list of objects. Each object must have a 'filename' key to match the input.
+    Format: [{{ "filename": "...", "name": "...", "top_skills": [...], "years_of_experience": 0, "job_title": "..." }}]
     """
-    Ingests PDF/Text files:
-    1. Loads full text.
-    2. Extracts metadata (AI).
-    3. Chunks text.
-    4. Attaches metadata to chunks.
-    5. Saves to Vector DB.
-    """
+)
+
+def batch_extract_metadata(resumes_data: List[Dict[str, str]]) -> List[Dict]:
+    if not resumes_data:
+        return []
+    
+    block = ""
+    for item in resumes_data:
+        block += f"--- FILENAME: {item['filename']} ---\nTEXT: {item['text'][:3500]}\n\n"
+    
+    try:
+        chain = BATCH_EXTRACTION_PROMPT | llm | JsonOutputParser()
+        results = chain.invoke({"resumes_block": block})
+        return results
+    except Exception as e:
+        print(f"Metadata extraction failed: {e}")
+        return []
+
+def ingest_documents(directory_path: str, batch_size: int = 5):
     if not os.path.exists(directory_path):
-        print(f"Directory not found: {directory_path}")
         return
 
     vectorstore = get_vectorstore()
+    all_files = [f for f in os.listdir(directory_path) if f.endswith(('.pdf', '.txt'))]
     
-    for filename in os.listdir(directory_path):
-        file_path = os.path.join(directory_path, filename)
-        
-        # A. Load File
-        docs = []
-        try:
-            if filename.endswith(".pdf"):
-                # Using PDFPlumber for better table extraction
-                docs = PDFPlumberLoader(file_path).load()
-            elif filename.endswith(".txt"):
-                docs = TextLoader(file_path, encoding='utf-8').load()
-        except Exception as e:
-            print(f"Skipping {filename}: {e}")
-            continue
-            
-        if not docs:
-            continue
+    for i in range(0, len(all_files), batch_size):
+        current_batch_files = all_files[i : i + batch_size]
+        resumes_to_process = []
+        batch_docs_objects = {}
 
-        # B. Merge text for AI analysis (Resume is usually one logical document)
-        full_text = "\n".join([d.page_content for d in docs])
-        print(f"  -> Extracted Text Length: {len(full_text)} chars")
-        
-        if not full_text:
-             print(f"  -> WARNING: No text extracted from {filename}. Is it scanned?")
-             continue
-        
-        # C. Extract Metadata
-        meta_data = extract_metadata(full_text, filename)
-        meta_data["source"] = filename # Keep filename as source
-        
-        # Set candidate_id from filename (without extension)
-        candidate_id = os.path.splitext(filename)[0]
-        meta_data["candidate_id"] = candidate_id
-        
-        print(f"  -> Extracted: {len(meta_data['top_skills'])} skills")
-
-        # D. Split & Attach Metadata
-        # Revised Strategy: larger chunks (1000) with good overlap (200) to keep context
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        splits = text_splitter.split_documents(docs)
-        
-        for split in splits:
-            # We add the AI metadata to *every* chunk
-            # For now, keeping skills as string due to ChromaDB limitations
-            # Later, we'll handle the conversion back to list in the search adapter
-            safe_metadata = meta_data.copy()
-            if "top_skills" in safe_metadata and isinstance(safe_metadata["top_skills"], list):
-                safe_metadata["top_skills_string"] = ", ".join(safe_metadata["top_skills"])  # Keep as string for storage
-                safe_metadata["top_skills"] = safe_metadata["top_skills"]  # Also keep the original list
-            else:
-                safe_metadata["top_skills_string"] = str(safe_metadata.get("top_skills", ""))
-            
-            split.metadata.update(safe_metadata)
-            # For now, let's keep page_content as is, but metadata is rich.
-        
-        # E. Save
-        if splits:
+        for filename in current_batch_files:
+            file_path = os.path.join(directory_path, filename)
             try:
-                vectorstore.add_documents(splits)
-                print(f"  -> Saved {len(splits)} chunks to DB.")
+                if filename.endswith(".pdf"):
+                    loader = PDFPlumberLoader(file_path)
+                else:
+                    loader = TextLoader(file_path, encoding='utf-8')
+                
+                file_docs = loader.load()
+                full_text = "\n".join([d.page_content for d in file_docs])
+                resumes_to_process.append({"filename": filename, "text": full_text})
+                batch_docs_objects[filename] = file_docs
+            except Exception:
+                continue
+
+        extracted_metadata_list = batch_extract_metadata(resumes_to_process)
+        meta_lookup = {item['filename']: item for item in extracted_metadata_list}
+
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        all_splits = []
+
+        for filename, docs in batch_docs_objects.items():
+            meta = meta_lookup.get(filename, {})
+            splits = text_splitter.split_documents(docs)
+            
+            skills_list = meta.get("top_skills", [])
+            skills_str = ", ".join(skills_list) if isinstance(skills_list, list) else str(skills_list)
+
+            for split in splits:
+                split.metadata.update({
+                    "name": str(meta.get("name", "Unknown Candidate")),
+                    "top_skills": skills_str, 
+                    "years_of_experience": int(meta.get("years_of_experience", 0)) if str(meta.get("years_of_experience")).isdigit() else 0,
+                    "job_title": str(meta.get("job_title", "N/A")),
+                    "source": str(filename),
+                    "candidate_id": str(os.path.splitext(filename)[0])
+                })
+            all_splits.extend(splits)
+
+        if all_splits:
+            try:
+                vectorstore.add_documents(all_splits)
+                print(f" Successfully indexed batch {i//batch_size + 1}")
+                time.sleep(1)
             except Exception as e:
-                print(f"  -> Error saving to DB for {filename}: {e}")
-        else:
-            print(f"  -> No splits found for {filename}. Skipping DB save.")
+                print(f" Error adding to VectorDB: {e}")
+                continue
 
 if __name__ == "__main__":
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = os.path.join(base_dir, "data")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(os.path.dirname(current_dir), "data")
     
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
-        print("Please add PDFs to the 'data' folder.")
-    else:
-        ingest_documents(data_dir)
+    ingest_documents(data_dir, batch_size=5)

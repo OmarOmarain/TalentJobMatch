@@ -1,109 +1,65 @@
 import os
 import logging
 from typing import Dict, Any, List
-from operator import itemgetter
 from dotenv import load_dotenv
 
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-from langchain_google_genai import ChatGoogleGenerativeAI
-
-# Local imports from your project
-from app.refiner.reranker import rerank_candidates
-from app.refiner.scorer import calculate_match_scores
+from app.refiner.scorer import process_and_score_candidates
 from app.refiner.evaluator import generate_and_evaluate_batch
 from app.search_adapter import search_pipeline_to_candidates
 
-# Setup logging for better debugging in production
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("HiringPipeline")
 
 load_dotenv()
 
-# -----------------------------------------------------
-# LLM Configuration
-# -----------------------------------------------------
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=os.environ.get("GOOGLE_API_KEY"),
-    temperature=0.2
-)
-
-# -----------------------------------------------------
-# Helper Functions for Pipeline Clarity
-# -----------------------------------------------------
 def format_description(input_data: Dict[str, Any]) -> str:
-    """Extracts raw text from JobDescription object or string."""
-    desc = input_data.get("description")
+    desc = input_data.get("description", "")
     if hasattr(desc, 'description'):
         return desc.description
     return str(desc)
 
-def search_step(input_data: Dict[str, Any]) -> List:
-    """Triggers the search phase to fetch initial candidates."""
-    description = format_description(input_data)
-    logger.info(f"Starting search for JD: {description[:50]}...")
-    return search_pipeline_to_candidates(description)
-
-def evaluation_step(input_data: Dict[str, Any]) -> List:
-    """Runs the combined explanation and evaluation logic."""
-    return generate_and_evaluate_batch(
-        description=format_description(input_data),
-        job_requirements=input_data.get("job_requirements", []),
-        candidates=input_data.get("candidates", [])
-    )
-
-# -----------------------------------------------------
-# Optimized LCEL Pipeline
-# -----------------------------------------------------
-# This structure ensures every block has access to original inputs
-hiring_pipeline = (
-    RunnablePassthrough.assign(
-        candidates=RunnableLambda(search_step)
-    )
-    | RunnablePassthrough.assign(
-        # Block 1: Reranking using Local CrossEncoder
-        candidates=lambda x: rerank_candidates(format_description(x), x["candidates"])
-    )
-    | RunnablePassthrough.assign(
-        # Block 2: Weighted Scoring Logic
-        candidates=lambda x: calculate_match_scores(x["candidates"])
-    )
-    | RunnablePassthrough.assign(
-        # Block 3: AI Deep Analysis (Structured Explanation + Evaluation)
-        deep_dives=RunnableLambda(evaluation_step)
-    )
-)
-
-# -----------------------------------------------------
-# Execution Interface
-# -----------------------------------------------------
-if __name__ == "__main__":
-    # Sample Test Case
-    test_input = {
-        "description": "Senior Frontend Developer with expertise in React, TypeScript, and 5+ years of experience.",
-        "job_requirements": ["React", "TypeScript", "Tailwind CSS"]
-    }
-
-    print("\n" + "="*50)
-    print("🚀 STARTING PROFESSIONAL HIRING PIPELINE")
-    print("="*50)
+def run_hiring_pipeline(input_data: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
-        final_result = hiring_pipeline.invoke(test_input)
+        jd_text = format_description(input_data)
+        requirements = input_data.get("job_requirements", [])
 
-        # Output Results Summary
-        print(f"\n✅ Successfully processed {len(final_result['candidates'])} candidates.")
+        logger.info(f"Step 1: Retrieving candidates...")
+        candidates = search_pipeline_to_candidates(jd_text)
         
-        print("\n--- TOP RANKED CANDIDATES ---")
-        for i, candidate in enumerate(final_result["candidates"][:3], 1):
-            print(f"{i}. {candidate.name} | Score: {candidate.score:.2f} | {candidate.current_title}")
-        
-        print("\n--- AI EVALUATION (DEEP DIVE) ---")
-        for dive in final_result["deep_dives"][:2]:
-            status = "TRUSTED" if dive.is_trustworthy else "UNVERIFIED"
-            print(f"Candidate ID: {dive.candidate_id} | Status: [{status}]")
-            print(f"Reasoning: {dive.explainability.why_match_summary}\n")
+        if not candidates:
+            logger.warning("No candidates found in Vector Store.")
+            return {"total_candidates": 0, "top_matches": []}
+
+        logger.info(f"Step 2: Auditing {len(candidates[:2])} candidates via Gemini...")
+        deep_dives = generate_and_evaluate_batch(
+            description=jd_text,
+            job_requirements=requirements,
+            candidates=candidates[:6]
+        )
+
+        logger.info(f"Step 3: Calculating final scores...")
+        final_output = process_and_score_candidates(
+            jd_text=jd_text,
+            candidates=candidates[:6],
+            evaluations=deep_dives
+        )
+
+        return {
+            "total_candidates": len(candidates),
+            "top_matches": final_output
+        }
 
     except Exception as e:
-        logger.error(f"Pipeline crashed: {str(e)}")
-        print(f"\n❌ ERROR: {e}")
+        logger.error(f"Pipeline Critical Failure: {str(e)}")
+        raise e
+
+from langchain_core.runnables import RunnableLambda
+hiring_pipeline = RunnableLambda(run_hiring_pipeline)
+
+if __name__ == "__main__":
+    test_input = {
+        "description": "Senior Scrum Master with Agile and Jira expertise.",
+        "job_requirements": ["Scrum", "Agile", "Jira"]
+    }
+    print(run_hiring_pipeline(test_input))

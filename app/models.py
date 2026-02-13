@@ -162,3 +162,13 @@ class MatchResult(BaseModel):
 class MatchResponse(BaseModel):
     total_candidates: int
     top_matches: List[MatchResult]
+    
+
+class CandidateEvaluation(BaseModel):
+    candidate_id: str = Field(description="The exact ID provided in the candidates list")
+    summary: str = Field(description="Brief reasoning why this candidate matches the JD")
+    faithfulness_score: float = Field(ge=0, le=1, description="Factuality score")
+    relevancy_score: float = Field(ge=0, le=1, description="Relevancy score")
+
+class BatchEvaluationResponse(BaseModel):
+    evaluations: List[CandidateEvaluation]
