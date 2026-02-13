@@ -29,7 +29,7 @@ async def match_candidates(job: JobDescriptionRequest):
     
     pipeline_start = time.time()
     
-    result = run_hiring_pipeline({
+    result = await run_hiring_pipeline({
         "description": job.description,
         "job_requirements": [] 
     })

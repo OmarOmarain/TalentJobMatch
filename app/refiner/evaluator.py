@@ -1,4 +1,6 @@
+import asyncio
 from typing import List
+
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.core import get_llm
@@ -13,109 +15,83 @@ from app.models import (
 
 llm = get_llm(temperature=0.0)
 
+BATCH_SIZE = 3
+MAX_PARALLEL = 3
 
-def generate_and_evaluate_batch(
+
+def chunk_list(data, size):
+    for i in range(0, len(data), size):
+        yield data[i:i + size]
+
+
+async def _evaluate_chunk(
     description: str,
     job_requirements: List[str],
-    candidates: List[CandidateCard]
+    candidates: List[CandidateCard],
+    semaphore: asyncio.Semaphore
 ) -> List[CandidateDeepDive]:
 
-    if not candidates:
-        return []
+    async with semaphore:
 
-    results: List[CandidateDeepDive] = []
+        results: List[CandidateDeepDive] = []
 
-    # ---------- Prepare Candidates Block ----------
-    candidates_data_block = ""
+        candidates_block = ""
 
-    for c in candidates:
-        skills_str = ", ".join(c.skills_match) if isinstance(c.skills_match, list) else str(c.skills_match)
+        for c in candidates:
+            skills_str = ", ".join(c.skills_match)
+            candidates_block += (
+                f"CANDIDATE_ID: {c.candidate_id}\n"
+                f"Name: {c.name}\n"
+                f"Skills: {skills_str}\n---\n"
+            )
 
-        candidates_data_block += (
-            f"CANDIDATE_ID: {c.candidate_id}\n"
-            f"Name: {c.name}\n"
-            f"Skills: {skills_str}\n---\n"
-        )
+        prompt = ChatPromptTemplate.from_template("""
+ROLE: HR Auditor
 
-    # ---------- Prompt ----------
-    prompt = ChatPromptTemplate.from_template("""
-### ROLE
-You are an expert Senior HR Technical Auditor. Your mission is to conduct a strict, evidence-based audit. 
-
-### THE GOLDEN RULE: ZERO EXTERNAL KNOWLEDGE
-- GROUNDEDNESS: You MUST evaluate candidates based ONLY on the text provided in the CANDIDATES TO AUDIT section.
-- NO ASSUMPTIONS: If a skill, tool, or certification is not explicitly mentioned, treat it as non-existent.
-- NO INFERENCE: Do not infer knowledge from job titles.
-
-### AUDIT GUIDELINES
-1. Perform deep scan across skills and profile content.
-2. Write summary in professional English.
-3. Preserve candidate_id EXACTLY.
-
-### EVALUATION METRICS
-- Relevancy Score (0.0 - 1.0)
-- Faithfulness Score (0.0 - 1.0)
-
-### INPUT DATA
----
 JOB DESCRIPTION:
 {description}
----
 
-CANDIDATES TO AUDIT:
+CANDIDATES:
 {candidates_block}
----
 
-### OUTPUT FORMAT
-Return valid JSON only:
+Return JSON:
 {{
-  "evaluations": [
+  "evaluations":[
     {{
-      "candidate_id": "string",
-      "summary": "Evidence-based analysis: [Strengths] vs [Missing requirements]",
-      "faithfulness_score": float,
-      "relevancy_score": float
+      "candidate_id":"string",
+      "summary":"string",
+      "faithfulness_score":float,
+      "relevancy_score":float
     }}
   ]
 }}
 """)
 
-
-    try:
-
         structured_llm = llm.with_structured_output(BatchEvaluationResponse)
 
-        formatted_prompt = prompt.format(
+        formatted = prompt.format(
             description=description,
-            candidates_block=candidates_data_block
+            candidates_block=candidates_block
         )
 
-        batch_output = structured_llm.invoke(formatted_prompt)
+        batch_output = await structured_llm.ainvoke(formatted)
 
         eval_lookup = {
             str(e.candidate_id).strip(): e
             for e in batch_output.evaluations
         }
 
-        # ---------- Build Deep Dive ----------
         for candidate in candidates:
 
-            c_id = str(candidate.candidate_id).strip()
-            evaluation = eval_lookup.get(c_id)
-
+            evaluation = eval_lookup.get(str(candidate.candidate_id).strip())
             if not evaluation:
                 continue
 
-            # ---------- Identified Skills ----------
             identified_skills = [
-                IdentifiedSkill(
-                    skill=s,
-                    evidence="Found in resume"
-                )
+                IdentifiedSkill(skill=s, evidence="Found in resume")
                 for s in candidate.skills_match
             ]
 
-            # ---------- Requirement Comparison ----------
             candidate_skills_lower = [s.lower() for s in candidate.skills_match]
 
             requirements_comparison = []
@@ -127,34 +103,50 @@ Return valid JSON only:
                 requirements_comparison.append(
                     RequirementEvidence(
                         requirement=req,
-                        candidate_evidence="Verified in skills list" if is_met else "Not explicitly mentioned",
+                        candidate_evidence="Verified in skills list" if is_met else "Not mentioned",
                         status="met" if is_met else "not_met"
                     )
                 )
 
-            # ---------- Build DeepDive ----------
             results.append(
                 CandidateDeepDive(
                     candidate_id=candidate.candidate_id,
-
                     explainability=ExplainabilityAnalysis(
                         why_match_summary=evaluation.summary,
                         identified_skills=identified_skills
                     ),
-
                     faithfulness_score=evaluation.faithfulness_score,
                     relevancy_score=evaluation.relevancy_score,
-
                     is_trustworthy=(
                         evaluation.faithfulness_score >= 0.75
                         and evaluation.relevancy_score >= 0.70
                     ),
-
                     requirements_comparison=requirements_comparison
                 )
             )
 
-    except Exception as e:
-        print(f"Audit process failed: {e}")
+        return results
 
-    return results
+
+async def generate_and_evaluate_batch(
+    description: str,
+    job_requirements: List[str],
+    candidates: List[CandidateCard]
+) -> List[CandidateDeepDive]:
+
+    if not candidates:
+        return []
+
+    semaphore = asyncio.Semaphore(MAX_PARALLEL)
+
+    tasks = []
+
+    for chunk in chunk_list(candidates, BATCH_SIZE):
+        tasks.append(
+            _evaluate_chunk(description, job_requirements, chunk, semaphore)
+        )
+
+    results = await asyncio.gather(*tasks)
+
+    # flatten list
+    return [item for sublist in results for item in sublist]
