@@ -3,7 +3,7 @@ import time
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from typing import List
-
+from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 from app.models import (
@@ -15,7 +15,8 @@ from app.models import (
 from app.refiner.hiring_pipeline import run_hiring_pipeline
 from app.performance_monitor import timing_decorator, perf_monitor
 
-app = FastAPI(title="Talent Job Matching API", version="1.0", debug=True)
+app = FastAPI(title="Talent Job Matching API", version="1.0",debug=True)
+app.add_middleware(CORSMiddleware,allow_origins=["*"],allow_credentials=False,allow_methods=["*"],allow_headers=["*"])
 
 @app.get("/")
 def read_root():
