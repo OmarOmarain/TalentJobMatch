@@ -1,86 +1,64 @@
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
+
+# ---------- Job Description ----------
 
 class JobDescriptionRequest(BaseModel):
     description: str = Field(min_length=20)
 
 
-
 class JobDescription(BaseModel):
-    title: str = Field(default="Unknown", description="Job title")
-    description: str = Field(..., description="Full job description text")
-    required_skills: List[str] = Field(default_factory=list, description="List of required skills")
+    title: str = Field(default="Unknown")
+    description: str
+    required_skills: List[str] = Field(default_factory=list)
+
     seniority_level: Optional[str] = Field(
         default=None,
-        pattern="^(junior|mid|senior|lead)$",
-        description="Experience level: junior, mid, senior, lead"
+        pattern="^(junior|mid|senior|lead)$"
     )
-    department: Optional[str] = Field(
-        default=None,
-        max_length=100,
-        description="Department or team"
-    )
+
+    department: Optional[str] = Field(default=None, max_length=100)
+
 
 # ---------- Atomic Models ----------
 
 class IdentifiedSkill(BaseModel):
-    skill: str = Field(..., description="Skill identified in candidate profile")
-    evidence: str = Field(..., description="Evidence supporting the skill")
+    skill: str
+    evidence: str
 
 
 class RequirementEvidence(BaseModel):
-    requirement: str = Field(..., description="Job requirement")
-    candidate_evidence: str = Field(..., description="Evidence from candidate CV")
+    requirement: str
+    candidate_evidence: str
     status: Literal["met", "partial", "not_met"]
 
 
 # ---------- Explainability ----------
 
 class ExplainabilityAnalysis(BaseModel):
-    why_match_summary: str = Field(
-        ..., description="LLM explanation of why the candidate matches the role"
-    )
 
-    identified_skills: List[IdentifiedSkill] = Field(
-        default_factory=list,
-        description="Detailed skill extraction with evidence"
-    )
-    required_skills: List[str] = Field(default_factory=list, description="List of required skills")
+    why_match_summary: str
+
+    identified_skills: List[IdentifiedSkill] = Field(default_factory=list)
+
+    required_skills: List[str] = Field(default_factory=list)
+
     seniority_level: Optional[str] = Field(
         default=None,
-        pattern="^(junior|mid|senior|lead)$",
-        description="Experience level: junior, mid, senior, lead"
+        pattern="^(junior|mid|senior|lead)$"
     )
+
     years_of_experience: Optional[int] = None
-    department: Optional[str] = Field(
-        default=None,
-        max_length=100,
-        description="Department or team"
-    )
+
+    department: Optional[str] = Field(default=None, max_length=100)
 
 
-   
-class MatchResult(BaseModel):
-    candidate_id: str
-    name: str
-    score: float = Field(..., description="Overall match score (0-1)")
-    skills_match: List[str] = Field(default_factory=list, description="Skills found in both JD and Candidate")
-    reasoning: str = Field(..., description="AI explanation for the match")
-    faithfulness_score: float = Field(..., description="Faithfulness score of the explanation")
-
-    requirements_comparison: List[RequirementEvidence] = Field(
-        default_factory=list,
-        description="Requirement-by-requirement evaluation"
-    )
-
-
-
-# ---------- Candidate Surface Card (for ranking / UI) ----------
+# ---------- Candidate Surface Card ----------
 
 class CandidateCard(BaseModel):
-    candidate_id: str
 
+    candidate_id: str
     name: str
     avatar_url: Optional[str] = None
 
@@ -92,83 +70,95 @@ class CandidateCard(BaseModel):
 
     location: Optional[str] = None
 
-    score: float = Field(
-        ..., ge=0, le=1,
-        description="Overall match score (0-1)"
-    )
+    score: float = Field(..., ge=0, le=1)
 
-    skills_match: List[str] = Field(
-        default_factory=list,
-        description="Skills found in both JD and Candidate"
-    )
+    skills_match: List[str] = Field(default_factory=list)
 
-    ai_reasoning_short: str = Field(
-        ..., description="Short AI-generated justification (UI-safe)"
-    )
+    ai_reasoning_short: str
 
 
-# ---------- Deep Analysis (internal / evaluation layer) ----------
+# ---------- Deep Analysis ----------
 
 class CandidateDeepDive(BaseModel):
+
     candidate_id: str
 
     explainability: ExplainabilityAnalysis
 
-    faithfulness_score: float = Field(
-        ..., ge=0, le=1,
-        description="How grounded the explanation is in the CV evidence"
-    )
+    faithfulness_score: float = Field(..., ge=0, le=1)
 
-    relevancy_score: float = Field(
-        ..., ge=0, le=1,
-        description="How relevant the explanation is to the job description"
-    )
+    relevancy_score: float = Field(..., ge=0, le=1)
 
-    is_trustworthy: bool = Field(
-        ..., description="Passed faithfulness & relevancy thresholds"
-    )
+    is_trustworthy: bool
+
+    requirements_comparison: List[RequirementEvidence] = Field(default_factory=list)
+
+
+# ---------- Final Match Result ----------
+
+class MatchResult(BaseModel):
+
+    candidate_id: str
+    name: str
+
+    # نسبة مئوية 0-100
+    score: float = Field(...)
+
+    skills_match: List[str] = Field(default_factory=list)
+
+    reasoning: str
+
+    faithfulness_score: float = Field(...)
+
+
+    @validator('score')
+    def score_within_percentage_range(cls, v):
+        if not (0 <= v <= 100):
+            raise ValueError("Score must be between 0 and 100")
+        return v
 
 
 # ---------- API Responses ----------
 
 class RankingResponse(BaseModel):
+
     job_description: str
-
     total_candidates_scanned: int
-
     top_candidates: List[CandidateCard]
 
 
 class CandidateAnalysisResponse(BaseModel):
+
     candidate: CandidateCard
     deep_dive: CandidateDeepDive
+
+
 class CandidateMetadata(BaseModel):
-    name: str = Field(..., description="Full name of the candidate")
-    summary: str = Field(..., description="Brief 2-3 sentence professional summary")
-    top_skills: List[str] = Field(default_factory=list, description="Top 5-10 technical skills found in resume")
-    years_of_experience: Optional[int] = Field(None, description="Total years of professional experience")
-    job_title: Optional[str] = Field(None, description="Most recent or relevant job title")
 
-
-class MatchResult(BaseModel):
-    candidate_id: str
     name: str
-    score: float = Field(..., ge=0, le=1, description="Match score (0-1)")
-    skills_match: List[str] = Field(default_factory=list, description="Skills matched between JD and candidate")
-    reasoning: Optional[str] = Field(None, description="AI generated reasoning / short justification")
-    faithfulness_score: Optional[float] = Field(None, ge=0, le=1, description="Faithfulness of reasoning to CV/evidence")
+    summary: str
+
+    top_skills: List[str] = Field(default_factory=list)
+
+    years_of_experience: Optional[int] = None
+    job_title: Optional[str] = None
 
 
 class MatchResponse(BaseModel):
+
     total_candidates: int
     top_matches: List[MatchResult]
-    
+
 
 class CandidateEvaluation(BaseModel):
-    candidate_id: str = Field(description="The exact ID provided in the candidates list")
-    summary: str = Field(description="Brief reasoning why this candidate matches the JD")
-    faithfulness_score: float = Field(ge=0, le=1, description="Factuality score")
-    relevancy_score: float = Field(ge=0, le=1, description="Relevancy score")
+
+    candidate_id: str
+    summary: str
+
+    faithfulness_score: float = Field(ge=0, le=1)
+    relevancy_score: float = Field(ge=0, le=1)
+
 
 class BatchEvaluationResponse(BaseModel):
+
     evaluations: List[CandidateEvaluation]
