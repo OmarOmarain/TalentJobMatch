@@ -1,136 +1,109 @@
-from dotenv import load_dotenv
 import os
+import logging
+from typing import Dict, Any, List
+from operator import itemgetter
+from dotenv import load_dotenv
 
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+# Local imports from your project
 from app.refiner.reranker import rerank_candidates
 from app.refiner.scorer import calculate_match_scores
-from app.refiner.explainer import generate_explanations
-from app.refiner.evaluator import evaluate_candidate
-
-from app.search import combined_search_pipeline
+from app.refiner.evaluator import generate_and_evaluate_batch
 from app.search_adapter import search_pipeline_to_candidates
+
+# Setup logging for better debugging in production
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("HiringPipeline")
 
 load_dotenv()
 
-# =====================================================
-# LLM
-# =====================================================
-
+# -----------------------------------------------------
+# LLM Configuration
+# -----------------------------------------------------
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
-    google_api_key=os.environ["GOOGLE_API_KEY"],
+    google_api_key=os.environ.get("GOOGLE_API_KEY"),
     temperature=0.2
 )
 
-# =====================================================
-# BLOCK 0 — SEARCH
-# =====================================================
+# -----------------------------------------------------
+# Helper Functions for Pipeline Clarity
+# -----------------------------------------------------
+def format_description(input_data: Dict[str, Any]) -> str:
+    """Extracts raw text from JobDescription object or string."""
+    desc = input_data.get("description")
+    if hasattr(desc, 'description'):
+        return desc.description
+    return str(desc)
 
-search_block = RunnableLambda(
-    lambda x: {
-        **x,
-        "candidates": search_pipeline_to_candidates(x["description"])
-    }
-)
+def search_step(input_data: Dict[str, Any]) -> List:
+    """Triggers the search phase to fetch initial candidates."""
+    description = format_description(input_data)
+    logger.info(f"Starting search for JD: {description[:50]}...")
+    return search_pipeline_to_candidates(description)
 
-# =====================================================
-# BLOCK 1 — RERANK
-# =====================================================
+def evaluation_step(input_data: Dict[str, Any]) -> List:
+    """Runs the combined explanation and evaluation logic."""
+    return generate_and_evaluate_batch(
+        description=format_description(input_data),
+        job_requirements=input_data.get("job_requirements", []),
+        candidates=input_data.get("candidates", [])
+    )
 
-rerank_block = RunnableLambda(
-    lambda x: {
-        **x,
-        "candidates": rerank_candidates(
-            x["description"].description if hasattr(x["description"], 'description') else x["description"],
-            x["candidates"]
-        )
-    }
-)
-
-# =====================================================
-# BLOCK 2 — SCORE
-# =====================================================
-
-score_block = RunnableLambda(
-    lambda x: {
-        **x,
-        "candidates": calculate_match_scores(x["candidates"])
-    }
-)
-
-# =====================================================
-# BLOCK 3 — EXPLAIN
-# =====================================================
-
-explain_block = RunnableLambda(
-    lambda x: {
-        **x,
-        "deep_dives": generate_explanations(
-            x["description"].description if hasattr(x["description"], 'description') else x["description"],
-            x.get("job_requirements", []),
-            x["candidates"]
-        )
-    }
-)
-
-# =====================================================
-# BLOCK 4 — EVALUATE
-# =====================================================
-
-def evaluate_all(x):
-    evaluated = []
-    
-    for deep_dive in x["deep_dives"]:
-        description_text = (
-            x["description"].description 
-            if hasattr(x["description"], 'description') 
-            else str(x["description"])
-        )
-        
-        evaluated.append(
-            evaluate_candidate(
-                deep_dive=deep_dive,
-                description=description_text,
-                cv_evidence=str(x["candidates"])
-            )
-        )
-    
-    return {**x, "deep_dives": evaluated}
-
-evaluate_block = RunnableLambda(evaluate_all)  # ✅ أضف هذا السطر!
-
-# =====================================================
-# FULL PIPELINE
-# =====================================================
-
+# -----------------------------------------------------
+# Optimized LCEL Pipeline
+# -----------------------------------------------------
+# This structure ensures every block has access to original inputs
 hiring_pipeline = (
-    RunnablePassthrough()
-    | search_block
-    | rerank_block
-    | score_block
-    | explain_block
-    | evaluate_block
+    RunnablePassthrough.assign(
+        candidates=RunnableLambda(search_step)
+    )
+    | RunnablePassthrough.assign(
+        # Block 1: Reranking using Local CrossEncoder
+        candidates=lambda x: rerank_candidates(format_description(x), x["candidates"])
+    )
+    | RunnablePassthrough.assign(
+        # Block 2: Weighted Scoring Logic
+        candidates=lambda x: calculate_match_scores(x["candidates"])
+    )
+    | RunnablePassthrough.assign(
+        # Block 3: AI Deep Analysis (Structured Explanation + Evaluation)
+        deep_dives=RunnableLambda(evaluation_step)
+    )
 )
 
-# =====================================================
-# LOCAL TEST
-# =====================================================
-
+# -----------------------------------------------------
+# Execution Interface
+# -----------------------------------------------------
 if __name__ == "__main__":
-    jd = "Looking for a Frontend Engineer skilled in Vue with 5 years experience."
-    requirements = ["Vue"]
-    
-    result = hiring_pipeline.invoke({
-        "description": jd,
-        "job_requirements": requirements
-    })
-    
-    print("\n=== Candidates After Pipeline ===\n")
-    for c in result["candidates"]:
-        print(f"{c.name}: score={c.score}, skills={c.skills_match}")
-    
-    print("\n=== Deep Dives / Explanations ===\n")
-    for d in result["deep_dives"]:
-        print(f"{d.candidate_id}: faithfulness={d.faithfulness_score}")
+    # Sample Test Case
+    test_input = {
+        "description": "Senior Frontend Developer with expertise in React, TypeScript, and 5+ years of experience.",
+        "job_requirements": ["React", "TypeScript", "Tailwind CSS"]
+    }
+
+    print("\n" + "="*50)
+    print("🚀 STARTING PROFESSIONAL HIRING PIPELINE")
+    print("="*50)
+
+    try:
+        final_result = hiring_pipeline.invoke(test_input)
+
+        # Output Results Summary
+        print(f"\n✅ Successfully processed {len(final_result['candidates'])} candidates.")
+        
+        print("\n--- TOP RANKED CANDIDATES ---")
+        for i, candidate in enumerate(final_result["candidates"][:3], 1):
+            print(f"{i}. {candidate.name} | Score: {candidate.score:.2f} | {candidate.current_title}")
+        
+        print("\n--- AI EVALUATION (DEEP DIVE) ---")
+        for dive in final_result["deep_dives"][:2]:
+            status = "TRUSTED" if dive.is_trustworthy else "UNVERIFIED"
+            print(f"Candidate ID: {dive.candidate_id} | Status: [{status}]")
+            print(f"Reasoning: {dive.explainability.why_match_summary}\n")
+
+    except Exception as e:
+        logger.error(f"Pipeline crashed: {str(e)}")
+        print(f"\n❌ ERROR: {e}")

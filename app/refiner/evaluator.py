@@ -1,127 +1,107 @@
 import os
-import re
+from typing import List
+from pydantic import BaseModel, Field
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 
-from app.models import CandidateDeepDive
-load_dotenv()
-
-
-# --- Gemini Judge ---
-judge_llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=os.environ["GOOGLE_API_KEY"],
-    temperature=0.0
+from app.models import (
+    CandidateCard,
+    CandidateDeepDive,
+    ExplainabilityAnalysis,
+    IdentifiedSkill,
+    RequirementEvidence
 )
 
+load_dotenv()
 
-# -------------------------
-# Helper: Extract float safely
-# -------------------------
-def extract_score(text: str) -> float:
-    """
-    Extract first float between 0 and 1 from LLM response.
-    Prevents crashes if model returns extra text.
-    """
+# Internal schema for structured extraction
+class EvaluationSchema(BaseModel):
+    summary: str = Field(description="A brief explanation of why the candidate matches or doesn't match the job.")
+    faithfulness_score: float = Field(description="Score between 0.0 and 1.0 indicating how well the explanation is grounded in the candidate data.")
+    relevancy_score: float = Field(description="Score between 0.0 and 1.0 indicating how relevant the candidate is to the job description.")
 
-    matches = re.findall(r"0\.\d+|1\.0+|1|0", text)
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    google_api_key=os.environ["GOOGLE_API_KEY"],
+    temperature=0
+)
 
-    if matches:
-        return float(matches[-1]) 
-
-    return 0.0
-
-
-# -------------------------
-# Faithfulness
-# -------------------------
-def evaluate_faithfulness(
-    explanation: str,
-    cv_evidence: str
-) -> float:
-
-    prompt = f"""
-You are an impartial evaluator.
-
-TASK:
-Evaluate FAITHFULNESS of the explanation.
-
-Faithful means:
-- Every claim is supported by evidence.
-
-Return ONLY ONE NUMBER between 0.0 and 1.0.
-Do not explain.
-Do not write anything else.
-
-CV EVIDENCE:
-{cv_evidence}
-
-EXPLANATION:
-{explanation}
-"""
-
-    response = judge_llm.invoke([HumanMessage(content=prompt)])
-    return extract_score(response.content)
-
-
-# -------------------------
-# Relevancy
-# -------------------------
-def evaluate_relevancy(
-    explanation: str,
-    description: str
-) -> float:
-
-    prompt = f"""
-You are an impartial evaluator.
-
-TASK:
-Evaluate RELEVANCY of the explanation to the job description.
-
-Return ONLY ONE NUMBER between 0.0 and 1.0.
-Do not explain.
-
-JOB DESCRIPTION:
-{description}
-
-EXPLANATION:
-{explanation}
-"""
-
-    response = judge_llm.invoke([HumanMessage(content=prompt)])
-    return extract_score(response.content)
-
-
-# -------------------------
-# Full Candidate Evaluation
-# -------------------------
-def evaluate_candidate(
-    deep_dive: CandidateDeepDive,
+def generate_and_evaluate_batch(
     description: str,
-    cv_evidence: str,
-    faithfulness_threshold: float = 0.75,
-    relevancy_threshold: float = 0.70
-) -> CandidateDeepDive:
+    job_requirements: List[str],
+    candidates: List[CandidateCard]
+) -> List[CandidateDeepDive]:
+    
+    results: List[CandidateDeepDive] = []
+    
+    # Binding the LLM to the schema for guaranteed JSON output
+    structured_llm = llm.with_structured_output(EvaluationSchema)
 
-    explanation_text = deep_dive.explainability.why_match_summary
+    prompt_template = ChatPromptTemplate.from_template("""
+    You are an expert HR Analyst. Analyze the following candidate for a specific job role.
+    
+    JOB DESCRIPTION:
+    {description}
+    
+    CANDIDATE DATA:
+    Name: {name}
+    Current Title: {title}
+    Years of Experience: {exp}
+    Skills: {skills}
+    
+    INSTRUCTIONS:
+    1. Evaluate the match summary.
+    2. Provide scores for faithfulness and relevancy.
+    3. Be objective and strictly base your evaluation on the candidate data provided.
+    """)
 
-    faithfulness = evaluate_faithfulness(
-        explanation_text,
-        cv_evidence
-    )
+    for candidate in candidates:
+        try:
+            # Single optimized LLM call per candidate
+            evaluation = structured_llm.invoke(
+                prompt_template.format(
+                    description=description,
+                    name=candidate.name,
+                    title=candidate.current_title,
+                    exp=candidate.years_experience,
+                    skills=", ".join(candidate.skills_match) if isinstance(candidate.skills_match, list) else str(candidate.skills_match)
+                )
+            )
 
-    relevancy = evaluate_relevancy(
-        explanation_text,
-        description
-    )
+            # Map the skills to IdentifiedSkill model
+            identified_skills = [
+                IdentifiedSkill(skill=s, evidence="Found in Candidate Profile") 
+                for s in candidate.skills_match
+            ]
 
-    deep_dive.faithfulness_score = faithfulness
-    deep_dive.relevancy_score = relevancy
+            # Compare requirements against candidate skills
+            candidate_skills_lower = {s.lower() for s in candidate.skills_match}
+            requirements_comparison = [
+                RequirementEvidence(
+                    requirement=req,
+                    candidate_evidence="Explicitly mentioned" if req.lower() in candidate_skills_lower else "Not found",
+                    status="met" if req.lower() in candidate_skills_lower else "not_met"
+                ) for req in job_requirements
+            ]
 
-    deep_dive.is_trustworthy = (
-        faithfulness >= faithfulness_threshold
-        and relevancy >= relevancy_threshold
-    )
+            # Constructing the final DeepDive object
+            deep_dive = CandidateDeepDive(
+                candidate_id=candidate.candidate_id,
+                explainability=ExplainabilityAnalysis(
+                    why_match_summary=evaluation.summary,
+                    identified_skills=identified_skills,
+                    requirements_comparison=requirements_comparison
+                ),
+                faithfulness_score=evaluation.faithfulness_score,
+                relevancy_score=evaluation.relevancy_score,
+                is_trustworthy=(evaluation.faithfulness_score >= 0.75 and evaluation.relevancy_score >= 0.70)
+            )
+            
+            results.append(deep_dive)
 
-    return deep_dive
+        except Exception as e:
+            print(f"Failed to evaluate candidate {candidate.name}: {e}")
+            continue
+
+    return results
